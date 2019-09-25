@@ -1,4 +1,4 @@
-package register
+package cyclone
 
 import (
 	consul "github.com/hashicorp/consul/api"

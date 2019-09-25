@@ -1,4 +1,4 @@
-package register
+package cyclone
 
 import (
 	"fmt"
@@ -7,26 +7,28 @@ import (
 )
 
 type (
-	matchType int
-	monitorType int
+	MatchType int
+	MonitorType int
 	matchFunc func(*SrvConfigInfo) (string, error)
 )
 
 const (
-	MatchTypeFull   matchType = iota // 完全匹配, 用于主机名
+	MatchTypeFull   MatchType = iota // 完全匹配, 用于主机名
 	MatchTypePrefix                  // 左匹配
 	MatchTypeIn                      // 包含
 	MatchTypeEqual                   // 服务健康数量相等
 	MatchTypeScope                   // 服务健康数量范围
+)
 
-	MonitorTypeNode    monitorType = iota // 主机名
+const (
+	MonitorTypeNode    MonitorType = iota // 主机名
 	MonitorTypeAddress                    // ip地址
 	MonitorTypeCount                      // 服务健康数量相等
 
 )
 
 var (
-	defaultMonitorConf MonitorConfig
+	defaultMonitorConf *MonitorConfig
 	monitorClients     = make(map[string]*monitor)
 
 	headMsg = `
@@ -47,21 +49,21 @@ var (
 )
 
 var (
-	MonitorConfIsNullErr     = errors.New("monitor config is null")
-	MonitorAddrISNullErr     = errors.New("monitor registry client address is null")
-	MonitorSrvCountEqualErr  = errors.New("monitor service health count error")
-	MonitorSrvMatchErr       = errors.New("monitor service health match error")
-	MonitorSrvCountPeakErr   = errors.New("monitor service count less than peak")
-	MonitorSrvCountValleyErr = errors.New("monitor service count more than valley")
-	MonitorGlobalErr         = errors.New("monitor service count more than valley")
-	MonitorSrvCountScopeErr  = errors.New("monitor service config count scope error")
+	MonitorConfIsNullErr      = errors.New("monitor config is null")
+	MonitorAddrISNullErr      = errors.New("monitor registry client address is null")
+	MonitorSrvCountEqualErr   = errors.New("monitor service health count error")
+	MonitorSrvMatchErr        = errors.New("monitor service health match error")
+	MonitorSrvCountPeakErr    = errors.New("monitor service count less than peak")
+	MonitorSrvCountValleyErr  = errors.New("monitor service count more than valley")
+	MonitorSrvCountScopeErr   = errors.New("monitor service config count scope error")
+	MonitorMatchFuncChoiceErr = errors.New("monitor service match choice function error")
 )
 
 type MonitorConfig struct {
 	Registry *RegistryConf
-	Type     monitorType      // 主机名Or地址Or数量, 节点状态
+	Type     MonitorType      // 主机名Or地址Or数量, 节点状态
 	Services []*SrvConfigInfo // 服务信息
-	Match    matchType
+	Match    MatchType
 }
 
 type SrvConfigInfo struct {
@@ -75,7 +77,7 @@ func (sci SrvConfigInfo) Count() int {
 	return len(sci.Hosts)
 }
 
-func InitConfig(mc MonitorConfig) {
+func InitConfig(mc *MonitorConfig) {
 	defaultMonitorConf = mc
 }
 
@@ -288,9 +290,6 @@ func (m *monitor) Run() ([]string, error) {
 	}
 
 	bd := m.monitorService(m.conf)
-	if len(bd) != 0 {
-		err = MonitorGlobalErr
-	}
 	return bd, err
 
 }
@@ -315,7 +314,6 @@ func checkScopeConf(sci *SrvConfigInfo) error {
 func (m *monitor) matchChoice() matchFunc {
 
 	tp := m.conf.Type
-
 	var f matchFunc
 	if tp != MonitorTypeCount && tp != MonitorTypeNode && tp != MonitorTypeAddress {
 		return f
@@ -355,18 +353,19 @@ func (m *monitor) matchChoice() matchFunc {
 func NewMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 	defaultMonitor, ok := monitorClients[name]
 	if ok && defaultMonitor != nil {
+		// todo 配置中心配置变更后的重新初始化
+		defaultMonitor.conf = mc
 		return defaultMonitor, nil
-
 	}
 
 	if mc == nil {
-		mc = &defaultMonitorConf
-
+		mc = defaultMonitorConf
 	}
 
 	if mc == nil {
 		return nil, MonitorConfIsNullErr
 	}
+
 	return newMonitor(name, mc)
 
 }
@@ -385,16 +384,15 @@ func newMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 	default:
 		err = RegistryNameErr
 	}
+
 	if mt != nil {
 		if mt.matchFunc == nil {
-			return nil, err
+			return nil, MonitorMatchFuncChoiceErr
 		}
 	}
 	if mt != nil {
 		monitorClients[name] = mt
-
 	}
-
 	return mt, err
 }
 

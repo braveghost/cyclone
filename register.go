@@ -1,4 +1,4 @@
-package register
+package cyclone
 
 import (
 	"github.com/micro/go-micro/registry"
@@ -20,12 +20,31 @@ var IpPortRegex = `^(?:(?:[0,1]?\d?\d|2[0-4]\d|25[0-5])\.){3}(?:[0,1]?\d?\d|2[0-
 	`:` + `([0-9]|[1-9]\d{1,3}|[1-5]\d{4}|6[0-5]{2}[0-3][0-5])$`
 
 type RegistryConf struct {
+	Service string
+
 	Registry        string   `json:"registry"`
-	RegistryAddress []string `json:"registry_address"`
+	RegistryAddress []string `json:"registry_address" mapstructure:"registry_address"`
+}
+
+func checkRc(rc *RegistryConf) error {
+	if len(rc.RegistryAddress) == 0 {
+		return RegistryAddrErr
+	}
+
+	err := GetAddressSlice(rc.RegistryAddress)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // 免侵入micro
 func NewRegistry(rc *RegistryConf) (reg registry.Registry, err error) {
+	err = checkRc(rc)
+	if err != nil {
+		return reg, err
+	}
 	switch rc.Registry {
 	case "consul":
 		reg = consul.NewRegistry(
