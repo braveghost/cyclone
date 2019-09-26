@@ -20,8 +20,6 @@ var IpPortRegex = `^(?:(?:[0,1]?\d?\d|2[0-4]\d|25[0-5])\.){3}(?:[0,1]?\d?\d|2[0-
 	`:` + `([0-9]|[1-9]\d{1,3}|[1-5]\d{4}|6[0-5]{2}[0-3][0-5])$`
 
 type RegistryConf struct {
-	Service string
-
 	Registry        string   `json:"registry"`
 	RegistryAddress []string `json:"registry_address" mapstructure:"registry_address"`
 }

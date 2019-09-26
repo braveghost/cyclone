@@ -41,9 +41,10 @@ func (m *matchConsul) HealthService(name string) *srvBaseInfo {
 
 	sbi.Health = len(srvList)
 	for _, l := range srvList {
-		sbi.Active = append(sbi.Active, &srvInfo{
+		sbi.Active = append(sbi.Active, &SrvInfo{
 			Node:    l.Node,
 			Address: l.Address + ":" + strconv.Itoa(l.ServicePort),
+			Tags: l.ServiceTags,
 		})
 	}
 

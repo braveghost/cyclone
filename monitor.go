@@ -89,12 +89,13 @@ type client interface {
 type srvBaseInfo struct {
 	Health int
 	Err    error
-	Active []*srvInfo
-	Death  []*srvInfo
+	Active []*SrvInfo
+	Death  []*SrvInfo
 }
-type srvInfo struct {
+type SrvInfo struct {
 	Node    string
 	Address string
+	Tags []string
 }
 
 type monitor struct {
@@ -103,7 +104,7 @@ type monitor struct {
 	matchFunc
 }
 
-func (m *monitor) getHost(si *srvInfo) string {
+func (m *monitor) getHost(si *SrvInfo) string {
 	switch m.conf.Type {
 	case MonitorTypeAddress:
 		return si.Address
@@ -124,7 +125,7 @@ func (m *monitor) matchErr(tag string) error {
 	return MonitorSrvMatchErr
 }
 
-type matchInnerFunc func(map[string]*srvInfo, string) bool
+type matchInnerFunc func(map[string]*SrvInfo, string) bool
 
 func (m *monitor) match(tag, fnTag string, info *SrvConfigInfo, fn matchInnerFunc) (string, error) {
 
@@ -136,7 +137,7 @@ func (m *monitor) match(tag, fnTag string, info *SrvConfigInfo, fn matchInnerFun
 
 		getHost := m.getHost
 
-		var hostSrv = make(map[string]*srvInfo)
+		var hostSrv = make(map[string]*SrvInfo)
 		for i, l := range hs.Active {
 			hostSrv[getHost(l)] = hs.Active[i]
 			msg += getActiveMsg(i+1, l.Node, l.Address)
@@ -161,7 +162,7 @@ func (m *monitor) matchFull(info *SrvConfigInfo) (string, error) {
 		"ServiceMatchFull",
 		"full",
 		info,
-		func(hs map[string]*srvInfo, host string) bool {
+		func(hs map[string]*SrvInfo, host string) bool {
 			_, ok := hs[host]
 			return ok
 		})
@@ -174,7 +175,7 @@ func (m *monitor) matchPrefix(info *SrvConfigInfo) (string, error) {
 		"prefix",
 
 		info,
-		func(hs map[string]*srvInfo, host string) bool {
+		func(hs map[string]*SrvInfo, host string) bool {
 			var status bool
 
 			for k := range hs {
@@ -196,7 +197,7 @@ func (m *monitor) matchIn(info *SrvConfigInfo) (string, error) {
 		"ServiceMatchIn",
 		"in",
 		info,
-		func(hs map[string]*srvInfo, host string) bool {
+		func(hs map[string]*SrvInfo, host string) bool {
 			var status bool
 			for k := range hs {
 				if strings.Contains(k, host) {
@@ -283,14 +284,7 @@ func (m *monitor) monitorService(conf *MonitorConfig) []string {
 // 启动
 func (m *monitor) Run() ([]string, error) {
 
-	match := m.client
-	err := match.initClient(m.conf.Registry)
-	if err != nil {
-		return nil, err
-	}
-
-	bd := m.monitorService(m.conf)
-	return bd, err
+	return  m.monitorService(m.conf), nil
 
 }
 
@@ -312,6 +306,8 @@ func checkScopeConf(sci *SrvConfigInfo) error {
 
 // 选择规则处理函数
 func (m *monitor) matchChoice() matchFunc {
+
+
 
 	tp := m.conf.Type
 	var f matchFunc
@@ -353,7 +349,7 @@ func (m *monitor) matchChoice() matchFunc {
 func NewMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 	defaultMonitor, ok := monitorClients[name]
 	if ok && defaultMonitor != nil {
-		// todo 配置中心配置变更后的重新初始化
+		// todo 配置变更后的重新初始化
 		defaultMonitor.conf = mc
 		return defaultMonitor, nil
 	}
@@ -391,6 +387,13 @@ func newMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 		}
 	}
 	if mt != nil {
+
+		match := mt.client
+		err := match.initClient(mc.Registry)
+		if err != nil {
+			return nil, err
+		}
+
 		monitorClients[name] = mt
 	}
 	return mt, err
