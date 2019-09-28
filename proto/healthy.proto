@@ -1,2 +1,27 @@
 syntax = "proto3";
 
+package cyclone.healthy;
+
+
+service Healthy {
+    rpc Healthy (Request) returns (Response) {
+    }
+}
+
+message Request {
+}
+
+message Response {
+    enum ResponseResult {
+        Success = 0;
+        Fail = -1;
+        Healthy = 1;
+    }
+
+    ResponseResult code = 1;
+    string msg = 2;
+}
+
+
+
+

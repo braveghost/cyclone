@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/micro/go-micro"
 	"github.com/pkg/errors"
-	"rogue"
+	"sync"
 	"time"
 )
 
@@ -27,6 +27,7 @@ type ServiceBuilder struct {
 	startCh       chan *struct{}
 	errorCountCh  chan error
 	errorHealthCh chan error
+	lock     sync.Mutex
 	register      *RegistryConf
 }
 
@@ -36,7 +37,29 @@ func (sb *ServiceBuilder) getTag(ops ...micro.Option) []micro.Option {
 	return ops
 }
 
+func (sb *ServiceBuilder) getRegister(ops ...micro.Option) []micro.Option {
+	reg, err := NewRegistry(sb.register)
+	if err != nil {
+		sb.errorCountCh <- err
+		return ops
+	} else {
+		ops = append(ops, micro.Registry(reg))
+	}
+
+	return ops
+}
+
+func (sb *ServiceBuilder) extendOps(ops ...micro.Option) []micro.Option {
+	ops = sb.getRegister(ops...)
+	ops = sb.getTag(ops...)
+	fmt.Println(ops)
+	return ops
+}
+
 func (sb *ServiceBuilder) discovery() ([]*SrvInfo, error) {
+	sb.lock.Lock()
+	defer sb.lock.Unlock()
+
 	m, err := NewMonitor("ServiceBuilderDiscovery", &MonitorConfig{
 		Registry: sb.register,
 	})
@@ -49,17 +72,26 @@ func (sb *ServiceBuilder) discovery() ([]*SrvInfo, error) {
 func (sb *ServiceBuilder) Run(errFn func(err error), ops ...micro.Option) error {
 	go sb.countFn(sb)
 	go sb.healthFn(sb)
-
 	srv := sb.service
 	if srv != nil {
 		for {
+
 			select {
 			case <-sb.startCh:
-				srv.Init(sb.getTag(ops...)...)
+				fmt.Println("ccccccc", sb)
+
+				srv.Init(sb.extendOps(ops...)...)
+				fmt.Println("xxxxxxx")
 				return srv.Run()
 			case err := <-sb.errorHealthCh:
+				fmt.Println("errorHealthCh")
+
+				if errFn != nil {
+
 				errFn(err)
+				}
 			case err := <-sb.errorCountCh:
+				fmt.Println("errorCountCh")
 				return err
 
 			}
@@ -106,6 +138,7 @@ func NewSrvSignal(set *Setting) (*ServiceBuilder, error) {
 		startCh:       make(chan *struct{}),
 		errorCountCh:  make(chan error),
 		errorHealthCh: make(chan error),
+		lock:     sync.Mutex{},
 	}, nil
 }
 
@@ -168,18 +201,18 @@ func defaultCheckerHealth(sb *ServiceBuilder) {
 //	return sb.status
 //
 //}
-
-func xxx() {
-	hb := rogue.NewHeartBeat(5, 10)
-	hb.AddSignal(&SrvSignal{false})
-	hb.AddSignal(&SrvSignal{true})
-	hb.AddSignal(&SrvSignal{false})
-	hb.AddSignal(&SrvSignal{false})
-	hb.AddSignal(&SrvSignal{false})
-	hb.AddSignal(&SrvSignal{false})
-	hb.AddSignal(&SrvSignal{false})
-	time.Sleep(time.Second * 11)
-	//hb.AddBeat(&SrvSignal{false})
-	//hb.AddBeat(&SrvSignal{false})
-	fmt.Println(hb.Status())
-}
+//
+//func example() {
+//	hb := rogue.NewHeartBeat(5, 10)
+//	hb.AddSignal(&SrvSignal{false})
+//	hb.AddSignal(&SrvSignal{true})
+//	hb.AddSignal(&SrvSignal{false})
+//	hb.AddSignal(&SrvSignal{false})
+//	hb.AddSignal(&SrvSignal{false})
+//	hb.AddSignal(&SrvSignal{false})
+//	hb.AddSignal(&SrvSignal{false})
+//	time.Sleep(time.Second * 11)
+//	//hb.AddBeat(&SrvSignal{false})
+//	//hb.AddBeat(&SrvSignal{false})
+//	fmt.Println(hb.Status())
+//}

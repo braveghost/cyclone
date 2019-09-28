@@ -10,6 +10,27 @@ import (
 	"github.com/pkg/errors"
 )
 
+
+var (
+	clusterKey    = "cluster-srv-key"
+	clusterMaster = "master-tag"
+	clusterSlave  = "slave-tag"
+)
+
+func SetClusterKey(key string) {
+	clusterKey = key
+}
+
+func SetMasterTag(tag string) {
+	clusterMaster = tag
+}
+
+func SetSlaveTag(tag string) {
+	clusterSlave = tag
+}
+
+
+
 var (
 	RegistryConfErr = errors.New("micro registry config error")
 	RegistryNameErr = errors.New("micro registry name error")
@@ -97,4 +118,10 @@ func GetAddressSlice(addrs []string) error {
 		}
 	}
 	return nil
+}
+
+
+// 删除服务, 并替换注册
+func ReplaceRegister()  {
+	
 }

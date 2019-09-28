@@ -12,7 +12,7 @@ func TestMonitorAddressFull(t *testing.T) {
 		Type:     MonitorTypeAddress,
 		Services: []*SrvConfigInfo{
 			&SrvConfigInfo{
-				Name:  "go.micro.util.srv.banner",
+				Name:  "go.micro.util.srv.zipcode",
 				Hosts: []string{"127.0.0.1:54901"},
 			},
 		},

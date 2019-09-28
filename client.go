@@ -1,6 +1,7 @@
 package cyclone
 
 import (
+	"fmt"
 	consul "github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
 	"strconv"
@@ -24,6 +25,7 @@ func (m *matchConsul) initClient(rc *RegistryConf) error {
 	if err != nil {
 		return errors.Wrap(err, "create consul client error")
 	}
+
 	return nil
 
 }
@@ -31,22 +33,28 @@ func (m *matchConsul) initClient(rc *RegistryConf) error {
 func (m *matchConsul) HealthService(name string) *srvBaseInfo {
 
 	var sbi = &srvBaseInfo{}
-	srvList, _, err := m.client.Catalog().Service(name, "", &consul.QueryOptions{
+	srvList, md, err := m.client.Catalog().Service(name, "", &consul.QueryOptions{
 		AllowStale: true,
 	})
 	if err != nil {
 		sbi.Err = err
 		return sbi
 	}
+	fmt.Println(md)
 
 	sbi.Health = len(srvList)
 	for _, l := range srvList {
+		fmt.Println(decodeMetadata(l.ServiceTags))
 		sbi.Active = append(sbi.Active, &SrvInfo{
 			Node:    l.Node,
 			Address: l.Address + ":" + strconv.Itoa(l.ServicePort),
-			Tags: l.ServiceTags,
+			Tags:    decodeMetadata(l.ServiceTags),
 		})
 	}
 
 	return sbi
+}
+func (m *matchConsul) Status() bool {
+	return true
+
 }

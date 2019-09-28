@@ -95,7 +95,7 @@ type srvBaseInfo struct {
 type SrvInfo struct {
 	Node    string
 	Address string
-	Tags []string
+	Tags    map[string]string
 }
 
 type monitor struct {
@@ -284,7 +284,7 @@ func (m *monitor) monitorService(conf *MonitorConfig) []string {
 // 启动
 func (m *monitor) Run() ([]string, error) {
 
-	return  m.monitorService(m.conf), nil
+	return m.monitorService(m.conf), nil
 
 }
 
@@ -306,8 +306,6 @@ func checkScopeConf(sci *SrvConfigInfo) error {
 
 // 选择规则处理函数
 func (m *monitor) matchChoice() matchFunc {
-
-
 
 	tp := m.conf.Type
 	var f matchFunc
@@ -347,6 +345,7 @@ func (m *monitor) matchChoice() matchFunc {
 
 // 创建监控器, 单例
 func NewMonitor(name string, mc *MonitorConfig) (*monitor, error) {
+	// todo 地址不可用判断以及注册失败判断
 	defaultMonitor, ok := monitorClients[name]
 	if ok && defaultMonitor != nil {
 		// todo 配置变更后的重新初始化
@@ -393,6 +392,7 @@ func newMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 		if err != nil {
 			return nil, err
 		}
+
 
 		monitorClients[name] = mt
 	}

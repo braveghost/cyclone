@@ -24,7 +24,7 @@ func main() {
 	service := grpc.NewService(
 		micro.Name("test_healthy"),
 	)
-	_ = proto.RegisterHealthyHandler(service.Server(), &testHealthyHandler{})
+	_ = proto.RegisterHealthyHandler(service. Server(), &testHealthyHandler{})
 	srv, err := cyclone.NewSrvSignal(&cyclone.Setting{
 		Service  :service,
 		Threshold :5, // 计数器阈值, 溢出后表服务不可用
@@ -38,7 +38,6 @@ func main() {
 		},
 	})
 	if err == nil {
-
 		if err := srv.Run(nil); err != nil {
 			fmt.Println(nil)
 		}
