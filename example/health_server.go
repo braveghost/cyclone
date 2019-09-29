@@ -23,11 +23,10 @@ func main() {
 		micro.Name("test_healthy"),
 	)
 	_ = proto.RegisterHealthyHandler(service.Server(), &testHealthyHandler{})
-	srv, err := cyclone.NewSrvSignal(&cyclone.Setting{
-		Service:   service,
+	srv, err := cyclone.NewServiceBuilder(service, nil, &cyclone.Setting{
 		Threshold: 5,  // 计数器阈值, 溢出后表服务不可用
 		Duration:  30, // 计数器统计时间周期, 距离当前多少秒内
-		Masters:   1,
+		Masters:   2,
 		Interval:  5,
 		Tags:      map[string]string{"test_service": "miller"},
 		Registry: &cyclone.RegistryConf{
@@ -36,29 +35,8 @@ func main() {
 		},
 	})
 	if err == nil {
-		if err := srv.Run(nil); err != nil {
-			fmt.Println(nil)
+		if err := srv.Run(); err != nil {
+			fmt.Println(err)
 		}
 	}
-	//
-	//service := grpc.NewService(
-	//	micro.Name("conf.ConfigSrvName"),
-	//	micro.RegisterTTL(time.Second*30),
-	//	micro.RegisterInterval(time.Second*10),
-	//	micro.Metadata(map[string]string{"tags":"woaichenni"}),
-	//
-	//)
-	//
-	//ops, _ := cyclone.NewRegistry(&cyclone.RegistryConf{
-	//	Registry:"consul",
-	//	RegistryAddress:[]string{"127.0.0.1:8500"},
-	//})
-	//
-	//_ = proto.RegisterHealthyHandler(service.Server(), &testHealthyHandler{})
-	//
-	//service.Init(micro.Registry(ops))
-	//
-	//if err := service.Run(); err != nil {
-	//	fmt.Println(err)
-	//}
 }

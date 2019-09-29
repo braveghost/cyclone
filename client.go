@@ -33,15 +33,13 @@ func (m *matchConsul) initClient(rc *RegistryConf) error {
 func (m *matchConsul) HealthService(name string) *srvBaseInfo {
 
 	var sbi = &srvBaseInfo{}
-	srvList, md, err := m.client.Catalog().Service(name, "", &consul.QueryOptions{
+	srvList, _, err := m.client.Catalog().Service(name, "", &consul.QueryOptions{
 		AllowStale: true,
 	})
 	if err != nil {
 		sbi.Err = err
 		return sbi
 	}
-	fmt.Println(md)
-
 	sbi.Health = len(srvList)
 	for _, l := range srvList {
 		fmt.Println(decodeMetadata(l.ServiceTags))
@@ -51,7 +49,6 @@ func (m *matchConsul) HealthService(name string) *srvBaseInfo {
 			Tags:    decodeMetadata(l.ServiceTags),
 		})
 	}
-
 	return sbi
 }
 func (m *matchConsul) Status() bool {
