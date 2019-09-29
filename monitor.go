@@ -393,7 +393,6 @@ func newMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 			return nil, err
 		}
 
-
 		monitorClients[name] = mt
 	}
 	return mt, err

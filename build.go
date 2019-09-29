@@ -27,7 +27,7 @@ type ServiceBuilder struct {
 	startCh       chan *struct{}
 	errorCountCh  chan error
 	errorHealthCh chan error
-	lock     sync.Mutex
+	lock          sync.Mutex
 	register      *RegistryConf
 }
 
@@ -88,7 +88,7 @@ func (sb *ServiceBuilder) Run(errFn func(err error), ops ...micro.Option) error 
 
 				if errFn != nil {
 
-				errFn(err)
+					errFn(err)
 				}
 			case err := <-sb.errorCountCh:
 				fmt.Println("errorCountCh")
@@ -138,7 +138,7 @@ func NewSrvSignal(set *Setting) (*ServiceBuilder, error) {
 		startCh:       make(chan *struct{}),
 		errorCountCh:  make(chan error),
 		errorHealthCh: make(chan error),
-		lock:     sync.Mutex{},
+		lock:          sync.Mutex{},
 	}, nil
 }
 

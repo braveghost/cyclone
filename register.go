@@ -10,7 +10,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-
 var (
 	clusterKey    = "cluster-srv-key"
 	clusterMaster = "master-tag"
@@ -28,8 +27,6 @@ func SetMasterTag(tag string) {
 func SetSlaveTag(tag string) {
 	clusterSlave = tag
 }
-
-
 
 var (
 	RegistryConfErr = errors.New("micro registry config error")
@@ -120,8 +117,7 @@ func GetAddressSlice(addrs []string) error {
 	return nil
 }
 
-
 // 删除服务, 并替换注册
-func ReplaceRegister()  {
-	
+func ReplaceRegister() {
+
 }
