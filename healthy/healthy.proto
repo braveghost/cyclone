@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package cyclone.healthy;
+
+option go_package = "cyclone/healthy";
+
+
+service CycloneHealthy {
+    rpc Healthy (CycloneRequest) returns (CycloneResponse) {
+    }
+}
+
+message CycloneRequest {
+}
+
+message ApiInfo {
+    string api = 1;
+    string error = 2;
+}
+
+message ServiceStatus {
+    string name = 1;
+    repeated ApiInfo api = 2;
+}
+
+
+message CycloneResponse {
+    enum ResponseResult {
+        Zombies = 0;
+        Sick = -1;
+        Healthy = 1;
+    }
+
+    ResponseResult code = 1;
+    ServiceStatus response = 2;
+}
+
+
+
+

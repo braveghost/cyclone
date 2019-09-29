@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package cyclone.test;
+
+import  "healthy.proto";
+
+service Cyclone {
+    rpc Cyclone (Request) returns (Response) {
+    }
+}
+
+service Healthy {
+    rpc Healthy (cyclone.healthy.CycloneRequest) returns (cyclone.healthy.CycloneResponse) {
+    }
+}
+
+import "google/protobuf/any.proto";
+message ErrorStatus {
+    string message = 1;
+    repeated google.protobuf.Any details = 2;
+}
+message Request {
+}
+
+message Response {
+    enum ResponseResult {
+        Success = 0;
+        Fail = -1;
+    }
+
+    ResponseResult code = 1;
+}
+
+
+
+
