@@ -16,7 +16,7 @@ type testHealthyHandler struct {
 func (hh testHealthyHandler) Healthy(ctx context.Context, req *healthy.CycloneRequest, res *healthy.CycloneResponse) error {
 	res.Response = &healthy.ServiceStatus{
 		Name: "healthy",
-		Api: []*healthy.ApiInfo{
+		ApiInfo: []*healthy.ApiInfo{
 			{
 				Api:   "healthy",
 				Error: "",
@@ -42,9 +42,8 @@ func main() {
 	service := grpc.NewService(
 		micro.Name("test_healthy"),
 	)
-	_ = proto.RegisterHealthyHandler(service.Server(), &testHealthyHandler{})
 	_ = proto.RegisterCycloneHandler(service.Server(), &testCycloneHandler{})
-	srv, err := cyclone.NewServiceBuilder(service, nil, &cyclone.Setting{
+	srv, err := cyclone.NewServiceBuilder(service, nil,&testHealthyHandler{}, &cyclone.Setting{
 		Threshold: 5,  // 计数器阈值, 溢出后表服务不可用
 		Duration:  30, // 计数器统计时间周期, 距离当前多少秒内
 		Masters:   2,

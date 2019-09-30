@@ -4,7 +4,6 @@
 package cyclone_test
 
 import (
-	healthy "cyclone/healthy"
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
 	_ "github.com/golang/protobuf/ptypes/any"
@@ -90,63 +89,4 @@ type cycloneHandler struct {
 
 func (h *cycloneHandler) Cyclone(ctx context.Context, in *Request, out *Response) error {
 	return h.CycloneHandler.Cyclone(ctx, in, out)
-}
-
-// Client API for Healthy service
-
-type HealthyService interface {
-	Healthy(ctx context.Context, in *healthy.CycloneRequest, opts ...client.CallOption) (*healthy.CycloneResponse, error)
-}
-
-type healthyService struct {
-	c    client.Client
-	name string
-}
-
-func NewHealthyService(name string, c client.Client) HealthyService {
-	if c == nil {
-		c = client.NewClient()
-	}
-	if len(name) == 0 {
-		name = "cyclone.test"
-	}
-	return &healthyService{
-		c:    c,
-		name: name,
-	}
-}
-
-func (c *healthyService) Healthy(ctx context.Context, in *healthy.CycloneRequest, opts ...client.CallOption) (*healthy.CycloneResponse, error) {
-	req := c.c.NewRequest(c.name, "Healthy.Healthy", in)
-	out := new(healthy.CycloneResponse)
-	err := c.c.Call(ctx, req, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// Server API for Healthy service
-
-type HealthyHandler interface {
-	Healthy(context.Context, *healthy.CycloneRequest, *healthy.CycloneResponse) error
-}
-
-func RegisterHealthyHandler(s server.Server, hdlr HealthyHandler, opts ...server.HandlerOption) error {
-	type healthy_ interface {
-		Healthy(ctx context.Context, in *healthy.CycloneRequest, out *healthy.CycloneResponse) error
-	}
-	type Healthy struct {
-		healthy_
-	}
-	h := &healthy_Handler{hdlr}
-	return s.Handle(s.NewHandler(&Healthy{h}, opts...))
-}
-
-type healthy_Handler struct {
-	HealthyHandler
-}
-
-func (h *healthy_Handler) Healthy(ctx context.Context, in *healthy.CycloneRequest, out *healthy.CycloneResponse) error {
-	return h.HealthyHandler.Healthy(ctx, in, out)
 }

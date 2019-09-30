@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package cyclone.healthy;
 
-option go_package = "cyclone/healthy";
 
 
 service CycloneHealthy {
@@ -20,7 +19,7 @@ message ApiInfo {
 
 message ServiceStatus {
     string name = 1;
-    repeated ApiInfo api = 2;
+    repeated ApiInfo api_info = 2;
 }
 
 

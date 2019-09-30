@@ -81,7 +81,7 @@ func InitConfig(mc *MonitorConfig) {
 	defaultMonitorConf = mc
 }
 
-type client interface {
+type monitorClient interface {
 	initClient(rc *RegistryConf) error
 	HealthService(name string) *srvBaseInfo
 }
@@ -99,7 +99,7 @@ type SrvInfo struct {
 }
 
 type monitor struct {
-	client
+	monitorClient
 	conf *MonitorConfig
 	matchFunc
 }
@@ -373,7 +373,7 @@ func newMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 	switch reg.Registry {
 	case "consul":
 		mt = &monitor{
-			client: &matchConsul{},
+			monitorClient: &matchConsul{},
 			conf:   mc}
 		mt.matchFunc = mt.matchChoice()
 	default:
@@ -387,7 +387,7 @@ func newMonitor(name string, mc *MonitorConfig) (*monitor, error) {
 	}
 	if mt != nil {
 
-		match := mt.client
+		match := mt.monitorClient
 		err := match.initClient(mc.Registry)
 		if err != nil {
 			return nil, err
