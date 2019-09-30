@@ -1,14 +1,11 @@
 package cyclone
 
 import (
-	"context"
 	healthy "cyclone/healthy"
 	"fmt"
 	logging "github.com/braveghost/joker"
-	"github.com/braveghost/rogue"
-	"github.com/micro/go-grpc"
 	"github.com/micro/go-micro"
-	"github.com/micro/go-micro/client"
+	"github.com/micro/go-micro/registry"
 	"github.com/pkg/errors"
 	"math/rand"
 	"sync"
@@ -33,21 +30,21 @@ func SetAlarmFunc(fn func(string)) {
 type checker func(*ServiceBuilder)
 
 type ServiceBuilder struct {
-	name           string
-	tags           map[string]string
-	count          int
-	heartBeat      *rogue.HeartBeat
-	status         bool
-	interval       int64
-	healthFunc     checker
-	service        micro.Service
-	start          chan *struct{}
-	alert          chan string
-	config         chan *Setting // 备用, 更新配置使用, 免配置中心侵入
-	error          chan error
-	lock           sync.Mutex
-	registerConf   *RegistryConf
-	registerOption micro.Option
+	name         string
+	tags         map[string]string
+	count        int
+	status       bool
+	interval     int64
+	healthFunc   checker
+	service      micro.Service
+	start        chan *struct{}
+	alert        chan string
+	error        chan error
+	config       chan *Setting // 备用, 更新配置使用, 免配置中心侵入
+	lock         sync.Mutex
+	registerConf *RegistryConf
+	register     registry.Registry
+	monitorConf  *MonitorConfig
 }
 
 // 加载集群 tag
@@ -59,19 +56,21 @@ func (sb *ServiceBuilder) getTag(ops ...micro.Option) []micro.Option {
 
 // 初始化注册中心
 func (sb *ServiceBuilder) getRegister(ops ...micro.Option) ([]micro.Option, error) {
-	reg, err := NewRegistry(sb.registerConf)
 
-	if err != nil {
-		return ops, err
+	if sb.register == nil {
+		register, err := NewRegistry(sb.registerConf)
+		if err != nil {
+			return ops, err
+		}
+		_, err = register.GetService(register.String())
+		if err != nil {
+			return ops, err
+		}
+		sb.register = register
 	}
 
-	_, err = reg.GetService(sb.name)
-	if err != nil {
-		return ops, err
-	}
-	sb.registerOption = micro.Registry(reg)
-	ops = append(ops, sb.registerOption)
-	return ops, err
+	ops = append(ops, micro.Registry(sb.register))
+	return ops, nil
 
 }
 
@@ -86,31 +85,16 @@ func (sb *ServiceBuilder) extendOps(ops ...micro.Option) ([]micro.Option, error)
 }
 
 func (sb *ServiceBuilder) discovery() ([]*SrvInfo, error) {
-	m, err := NewMonitor("ServiceBuilderDiscovery", &MonitorConfig{
-		Registry: sb.registerConf,
-	})
-	if err != nil {
-		return nil, err
-	}
-	pp := m.HealthService(sb.name)
-	return pp.Active, nil
-}
-
-var healthClient healthy.CycloneHealthyService
-
-// todo 单例不要 error
-func (sb *ServiceBuilder) GetHealthyClient() (healthy.CycloneHealthyService, error) {
-	if healthClient == nil {
-		srv := grpc.NewService(
-			sb.registerOption,
-		).Client()
-		err := srv.Init()
-		if err != nil {
-			return nil, err
-		}
-		healthClient = healthy.NewCycloneHealthyService(sb.name, srv)
-	}
-	return healthClient, nil
+	//m, err := NewMonitor("ServiceBuilderDiscovery", &MonitorConfig{
+	//	Registry: sb.registerConf,
+	//})
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//
+	//pp := sb.register.GetService(sb.name)
+	return nil, nil
 }
 
 // 监控提醒
@@ -137,7 +121,6 @@ func (sb *ServiceBuilder) Run(ops ...micro.Option) error {
 	if err != nil {
 		return err
 	}
-	//
 	go sb.healthFunc(sb)
 	srv := sb.service
 
@@ -154,12 +137,11 @@ func (sb *ServiceBuilder) Run(ops ...micro.Option) error {
 }
 
 type Setting struct {
-	Threshold int64 // 计数器阈值, 溢出后表服务不可用
-	Duration  int64 // 计数器统计时间周期, 距离当前多少秒内
-	Masters   int
-	Interval  int64
-	Tags      map[string]string
-	Registry  *RegistryConf
+	Masters       int
+	Interval      int64
+	Tags          map[string]string
+	Registry      *RegistryConf
+	MonitorConfig *MonitorConfig
 }
 
 func NewServiceBuilder(srv micro.Service, fn checker, hdlr healthy.CycloneHealthyHandler, set *Setting) (*ServiceBuilder, error) {
@@ -181,19 +163,21 @@ func NewServiceBuilder(srv micro.Service, fn checker, hdlr healthy.CycloneHealth
 	if err != nil {
 		return nil, MicroServiceHealthHandlerErr
 	}
+
 	return &ServiceBuilder{
 		count:        set.Masters,
 		tags:         set.Tags,
 		service:      srv,
-		name:         srv.Server().Options().Name,
 		interval:     set.Interval,
 		healthFunc:   fn,
 		registerConf: set.Registry,
-		start:        make(chan *struct{}, 1),
-		error:        make(chan error),
-		alert:        make(chan string),
-		lock:         sync.Mutex{},
-		heartBeat:    rogue.NewHeartBeat(set.Threshold, set.Duration),
+		monitorConf:  set.MonitorConfig,
+
+		name:  srv.Server().Options().Name,
+		start: make(chan *struct{}, 1),
+		error: make(chan error),
+		alert: make(chan string),
+		lock:  sync.Mutex{},
 	}, nil
 }
 
@@ -203,118 +187,21 @@ func defaultCheckerHealth(sb *ServiceBuilder) {
 	min := int64(0.8 * float64(max))
 
 	for {
-		// 服务发现
-		act, err := sb.discovery()
+		m, err := NewMonitor(sb.register, sb.monitorConf)
 		if err != nil {
-			logging.Errorw("Cyclone.ServiceBuilder.HealthFunc.Discovery.Error",
-				"err", err)
+			//	todo 告警
 			sb.error <- err
-			return
 		}
 
-		// 服务数量检查
-		ct := len(act)
-		if ct < sb.count {
-			logging.Infow("Cyclone.ServiceBuilder.HealthFunc.Count.StartService.Info",
-				"config_health_count", sb.count, "center_health_count", ct)
+		body, err := m.Run()
+		if err == nil {
 			sb.start <- &struct{}{}
 			return
 		}
-		logging.Debugw("Cyclone.ServiceBuilder.HealthFunc.Verify.Debug",
-			"config_health_count", sb.count, "center_health_count", ct)
-
-		// 健康检查
-		for _, s := range act {
-			if val, ok := s.Tags[clusterKey]; ok && val == clusterMaster {
-				cli, err := sb.GetHealthyClient()
-				if err != nil {
-					logging.Errorw("Cyclone.ServiceBuilder.HealthFunc.GetHealthyClient.Error",
-						"err", err)
-					sb.error <- err
-					return
-				}
-				res, err := cli.Healthy(context.Background(), &healthy.CycloneRequest{},
-					func(option *client.CallOptions) {
-						option.Address = []string{s.Address}
-					},
-				)
-				if err != nil {
-					logging.Errorw("Cyclone.ServiceBuilder.HealthFunc.Healthy.Error",
-						"err", err)
-					sb.error <- err
-					return
-				}
-
-				sb.heartBeat.AddSignal(&healthSignal{res, sb.alert})
-				if sb.heartBeat.Status() {
-					//	todo 关闭服务
-					logging.Infow("Cyclone.ServiceBuilder.HealthFunc.Zombies.StartService.Info",
-						"config_health_count", sb.count, "center_health_count", ct)
-					sb.start <- &struct{}{}
-					return
-				}
-			} else {
-				logging.Warnw("Cyclone.ServiceBuilder.HealthFunc.Tag.Warn",
-					"tags", s.Tags)
-			}
-		}
-
+		fmt.Println(body)
 		time.Sleep(time.Duration(RandomInt64n(min, max)))
-
 	}
 
-}
-
-type healthSignal struct {
-	res *healthy.CycloneResponse
-	ch  chan string
-}
-
-// 心跳状态, 每一次就计算一次
-func (hc *healthSignal) Status() bool {
-	res := hc.res
-	switch res.Code {
-	case healthy.CycloneResponse_Healthy:
-		//	不做任何操作
-		return false
-	case healthy.CycloneResponse_Zombies:
-		// 计数统计
-		return true
-	case healthy.CycloneResponse_Sick:
-		//	告警
-		hc.ch <- alertSickMsg(res.Response)
-		return false
-	default:
-		//	告警
-		hc.ch <- fmt.Sprintf(serviceStatusCodeErrorMsg, res.Response.Name, res.Code)
-		return false
-	}
-
-}
-
-var (
-	serviceStatusHeadMsg = `
-================================ [ServiceStatus] %v ================================
-	`
-
-	serviceStatusCodeErrorMsg = `
-================================ [ServiceStatus] %v ================================
-	[Code]: %v
-    [Error]: response code is not support
-`
-	serviceStatusApiMsg = `
-------N%v:
-	[Api]: %v		[Error]: %v
-`
-)
-
-func alertSickMsg(ss *healthy.ServiceStatus) string {
-	msg := fmt.Sprintf(serviceStatusHeadMsg, ss.Name)
-
-	for i, l := range ss.ApiInfo {
-		msg = msg + fmt.Sprintf(serviceStatusApiMsg, i+1, l.Api, l.Error)
-	}
-	return msg
 }
 
 func RandomInt64n(min, max int64) int64 {

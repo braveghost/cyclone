@@ -33,9 +33,7 @@ func GetHealthyClient() (healthy.CycloneHealthyService, error) {
 	return iClient, nil
 }
 
-
 var iiClient proto.CycloneService
-
 
 func GetCycloneClient() (proto.CycloneService, error) {
 	if iiClient == nil {
@@ -92,9 +90,6 @@ func main() {
 		//	option.Address = []string{"10.xxx.xxx.15:63372"}
 		//},
 	)
-	fmt.Println("xxxxxx",iinnerRes, iinnerErr)
+	fmt.Println("xxxxxx", iinnerRes, iinnerErr)
 
 }
-
-
-

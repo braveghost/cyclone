@@ -27,8 +27,6 @@ func (hh testHealthyHandler) Healthy(ctx context.Context, req *healthy.CycloneRe
 	return nil
 }
 
-
-
 type testCycloneHandler struct {
 }
 
@@ -37,21 +35,29 @@ func (hh testCycloneHandler) Cyclone(ctx context.Context, req *proto.Request, re
 	return nil
 }
 
-
 func main() {
 	service := grpc.NewService(
 		micro.Name("test_healthy"),
 	)
 	_ = proto.RegisterCycloneHandler(service.Server(), &testCycloneHandler{})
-	srv, err := cyclone.NewServiceBuilder(service, nil,&testHealthyHandler{}, &cyclone.Setting{
-		Threshold: 5,  // 计数器阈值, 溢出后表服务不可用
-		Duration:  30, // 计数器统计时间周期, 距离当前多少秒内
-		Masters:   2,
-		Interval:  5,
-		Tags:      map[string]string{"test_service": "miller"},
+	srv, err := cyclone.NewServiceBuilder(service, nil, &testHealthyHandler{}, &cyclone.Setting{
+		Masters:  2,
+		Interval: 5,
+		Tags:     map[string]string{"test_service": "miller"},
 		Registry: &cyclone.RegistryConf{
 			Registry:        "consul",
 			RegistryAddress: []string{"127.0.0.1:8500"},
+		},
+		MonitorConfig: &cyclone.MonitorConfig{
+			Name: "test_healthy",
+			Type: cyclone.MonitorTypeCount,
+			Services: []*cyclone.SrvConfigInfo{
+				{
+					Name:  "test_healthy",
+					Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
+				},
+			},
+			Match: cyclone.MatchTypeEqual,
 		},
 	})
 	if err == nil {

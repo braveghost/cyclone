@@ -5,20 +5,46 @@ import (
 	"testing"
 )
 
-func TestMonitorAddressFull(t *testing.T) {
-
+func TestMonitorDelNodeFull(t *testing.T) {
 	x := &MonitorConfig{
-		Registry: &RegistryConf{"consul", []string{"127.0.0.1:8500"}},
-		Type:     MonitorTypeAddress,
+		Name: "test_healthy",
+		Type: MonitorTypeAddress,
 		Services: []*SrvConfigInfo{
-			&SrvConfigInfo{
-				Name:  "go.micro.util.srv.zipcode",
-				Hosts: []string{"127.0.0.1:54901"},
+			{
+				Name:  "test_healthy",
+				Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
 			},
 		},
 		Match: MatchTypeFull,
 	}
-	m, _ := NewMonitor("TestMonitorAddressFull", x)
+
+	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
+	m, _ := NewMonitor(r, x)
+
+	srvs, _ := m.GetService("test_healthy")
+	fmt.Println(srvs[0].Nodes)
+	m.removeNode(srvs[0].Name, srvs[0].Nodes[0])
+
+	sss, _ := m.GetService("test_healthy")
+	fmt.Println(sss[0].Nodes)
+
+}
+func TestMonitorAddressFull(t *testing.T) {
+
+	x := &MonitorConfig{
+		Name: "test_healthy",
+		Type: MonitorTypeAddress,
+		Services: []*SrvConfigInfo{
+			{
+				Name:  "test_healthy",
+				Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
+			},
+		},
+		Match: MatchTypeFull,
+	}
+
+	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
+	m, _ := NewMonitor(r, x)
 	fmt.Println(m.Run())
 
 }
@@ -26,17 +52,19 @@ func TestMonitorAddressFull(t *testing.T) {
 func TestMonitorAddressIn(t *testing.T) {
 
 	x := &MonitorConfig{
-		Registry: &RegistryConf{"consul", []string{"127.0.0.1:8500"}},
-		Type:     MonitorTypeAddress,
+		Name: "test_healthy",
+
+		Type: MonitorTypeAddress,
 		Services: []*SrvConfigInfo{
-			&SrvConfigInfo{
-				Name:  "go.micro.util.srv.banner",
-				Hosts: []string{"27.0.0.1"},
+			{
+				Name:  "test_healthy",
+				Hosts: []string{"0.60.204.15"},
 			},
 		},
 		Match: MatchTypeIn,
 	}
-	m, _ := NewMonitor("TestMonitorAddressIn", x)
+	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
+	m, _ := NewMonitor(r, x)
 	fmt.Println(m.Run())
 
 }
@@ -44,35 +72,36 @@ func TestMonitorAddressIn(t *testing.T) {
 func TestMonitorAddressPrefix(t *testing.T) {
 
 	x := &MonitorConfig{
-		Registry: &RegistryConf{"consul", []string{"127.0.0.1:8500"}},
-		Type:     MonitorTypeNode,
+		Name: "test_healthy",
+		Type: MonitorTypeAddress,
 		Services: []*SrvConfigInfo{
-			&SrvConfigInfo{
-				Name:  "go.micro.util.srv.banner",
-				Hosts: []string{"Destiny"},
+			{
+				Name:  "test_healthy",
+				Hosts: []string{"10.60.204.15"},
 			},
 		},
 		Match: MatchTypePrefix,
 	}
-	m, _ := NewMonitor("TestMonitorAddressIn", x)
+	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
+	m, _ := NewMonitor(r, x)
 	fmt.Println(m.Run())
 
 }
 
 func TestMonitorEqual(t *testing.T) {
-
 	x := &MonitorConfig{
-		Registry: &RegistryConf{"consul", []string{"127.0.0.1:8500"}},
-		Type:     MonitorTypeCount,
+		Name: "test_healthy",
+		Type: MonitorTypeCount,
 		Services: []*SrvConfigInfo{
-			&SrvConfigInfo{
-				Name:  "go.micro.util.srv.banner",
-				Hosts: []string{"127.0.0.1", "127.0.0.1"},
+			{
+				Name:  "test_healthy",
+				Hosts: []string{"127.0.0.1", "127.0.0.2"},
 			},
 		},
 		Match: MatchTypeEqual,
 	}
-	m, _ := NewMonitor("TestMonitorEqual", x)
+	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
+	m, _ := NewMonitor(r, x)
 	fmt.Println(m.Run())
 
 }
@@ -80,18 +109,18 @@ func TestMonitorEqual(t *testing.T) {
 func TestMonitorScope(t *testing.T) {
 
 	x := &MonitorConfig{
-		Registry: &RegistryConf{"consul", []string{"127.0.0.1:8500"}},
-		Type:     MonitorTypeCount,
+		Name: "test_healthy",
+		Type: MonitorTypeCount,
 		Services: []*SrvConfigInfo{
-			&SrvConfigInfo{
-				Name:   "go.micro.util.srv.banner",
-				Hosts:  []string{"127.0.0.1"},
-				Peak:   1,
+			{
+				Name:   "test_healthy",
+				Peak:   2,
 				Valley: 1,
 			},
 		},
 		Match: MatchTypeScope,
 	}
-	m, _ := NewMonitor("TestMonitorScope", x)
+	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
+	m, _ := NewMonitor(r, x)
 	fmt.Println(m.Run())
 }
