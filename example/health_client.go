@@ -9,7 +9,7 @@ import (
 
 	"cyclone"
 
-	cli "github.com/micro/go-grpc"
+	cli "github.com/micro/go-micro/service/grpc"
 )
 
 var (

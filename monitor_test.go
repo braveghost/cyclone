@@ -32,11 +32,11 @@ func TestMonitorDelNodeFull(t *testing.T) {
 func TestMonitorAddressFull(t *testing.T) {
 
 	x := &MonitorConfig{
-		Name: "test_healthy",
+		Name: "go.micro.util.srv.banner",
 		Type: MonitorTypeAddress,
 		Services: []*SrvConfigInfo{
 			{
-				Name:  "test_healthy",
+				Name:  "go.micro.util.srv.banner",
 				Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
 			},
 		},

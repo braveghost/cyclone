@@ -6,10 +6,10 @@ import (
 	"fmt"
 	logging "github.com/braveghost/joker"
 	"github.com/braveghost/rogue"
-	"github.com/micro/go-grpc"
 	"github.com/micro/go-micro"
 	"github.com/micro/go-micro/client"
 	"github.com/micro/go-micro/registry"
+	"github.com/micro/go-micro/service/grpc"
 	"github.com/pkg/errors"
 	"strings"
 )
@@ -465,6 +465,7 @@ func (m *monitor) monitorService(conf *MonitorConfig) []string {
 			msg = getHeadMsg("ServiceConfigError", info.Name, info.Count(), -1, err)
 		} else {
 			msg, err = m.matchFunc(info)
+	fmt.Println(err)
 		}
 
 		if err != nil {

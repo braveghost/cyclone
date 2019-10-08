@@ -6,8 +6,8 @@ import (
 	proto "cyclone/example/proto"
 	healthy "cyclone/healthy"
 	"fmt"
-	"github.com/micro/go-grpc"
 	"github.com/micro/go-micro"
+	"github.com/micro/go-micro/service/grpc"
 )
 
 type testHealthyHandler struct {
