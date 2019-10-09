@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"cyclone"
-	proto "cyclone/example/proto"
-	healthy "cyclone/healthy"
 	"fmt"
+	"github.com/braveghost/cyclone"
+	proto "github.com/braveghost/cyclone/example/proto"
+	healthy "github.com/braveghost/cyclone/healthy"
 	"github.com/micro/go-micro"
 	"github.com/micro/go-micro/service/grpc"
 )
@@ -14,16 +14,13 @@ type testHealthyHandler struct {
 }
 
 func (hh testHealthyHandler) Healthy(ctx context.Context, req *healthy.CycloneRequest, res *healthy.CycloneResponse) error {
-	res.Response = &healthy.ServiceStatus{
-		Name: "healthy",
-		ApiInfo: []*healthy.ApiInfo{
-			{
-				Api:   "healthy",
-				Error: "",
-			},
-		},
-	}
-	res.Code = healthy.CycloneResponse_Healthy
+	fmt.Println(res)
+	res = healthy.InitResponse("healthy", res)
+	fmt.Println(res.Code, res.Response, res.Response.Name, res.Response.ApiInfo)
+	healthy.GetHealthyInfo("xxx", res, func() (*healthy.ApiInfo, error) {
+		return nil, nil
+	})
+	fmt.Println(res.Code, res.Response, res.Response.Name, res.Response.ApiInfo)
 	return nil
 }
 
@@ -41,6 +38,7 @@ func main() {
 	)
 	_ = proto.RegisterCycloneHandler(service.Server(), &testCycloneHandler{})
 	srv, err := cyclone.NewServiceBuilder(service, nil, &testHealthyHandler{}, &cyclone.Setting{
+		//srv, err := cyclone.NewServiceBuilder(service, nil, nil, &cyclone.Setting{
 		Masters:  2,
 		Interval: 5,
 		Tags:     map[string]string{"test_service": "miller"},

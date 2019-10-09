@@ -2,8 +2,8 @@ package cyclone
 
 import (
 	"context"
-	healthy "cyclone/healthy"
 	"fmt"
+	healthy "github.com/braveghost/cyclone/healthy"
 	logging "github.com/braveghost/joker"
 	"github.com/braveghost/rogue"
 	"github.com/micro/go-micro"
@@ -75,16 +75,22 @@ type MonitorConfig struct {
 	Name     string           // 配置名称, 根据配置名称单例客户端
 	Type     MonitorType      // 主机名Or地址Or数量, 节点状态
 	Services []*SrvConfigInfo // 服务信息
-	Match    MatchType
+	Match    MatchType        // 匹配类型
 }
 
 type SrvConfigInfo struct {
-	Name      string
-	Hosts     []string
-	Peak      int // 服务最大量, count+=peak
-	Valley    int // 服务服务最小量, count+=valley，valley<count<peak，组成一个范围值
-	Duration  int64
-	Threshold int64
+	Name      string   // 服务名称
+	Hosts     []string // 精确匹配主机
+	Peak      int      // 服务最大量, count+=peak
+	Valley    int      // 服务服务最小量, count+=valley，valley<count<peak，组成一个范围值
+	Duration  int64    // 健康检查心跳持续时间
+	Threshold int64    // 健康检查删除节点阈值, 即持续时间内到达阈值删除节点
+}
+
+type SrvHealthyConfig struct {
+	Name      string // 服务名称
+	Duration  int64  // 健康检查心跳持续时间
+	Threshold int64  // 健康检查删除节点阈值, 即持续时间内到达阈值删除节点
 }
 
 func (sci SrvConfigInfo) Count() int {
@@ -185,7 +191,11 @@ func (m *monitor) match(tag, fnTag string, info *SrvConfigInfo, fn func(*healthI
 	healthCount := -1
 	var msg string
 
-	hi, err := m.GetHealth(info)
+	hi, err := m.GetHealth(&SrvHealthyConfig{
+		info.Name,
+		info.Duration,
+		info.Threshold})
+
 	if err == nil {
 		healthCount = hi.HealthCount
 		msg, err = fn(hi)
@@ -194,7 +204,8 @@ func (m *monitor) match(tag, fnTag string, info *SrvConfigInfo, fn func(*healthI
 
 }
 
-func (m *monitor) GetHealth(info *SrvConfigInfo) (*healthInfo, error) {
+// 健康状态检查
+func (m *monitor) GetHealth(info *SrvHealthyConfig) (*healthInfo, error) {
 	var hi *healthInfo
 	hs, err := m.GetService(info.Name)
 	if err == nil {
@@ -264,7 +275,10 @@ func (m *monitor) matchIn(info *SrvConfigInfo) (string, error) {
 }
 
 func (m *monitor) MatchScope(info *SrvConfigInfo) (*healthInfo, error) {
-	hi, err := m.GetHealth(info)
+	hi, err := m.GetHealth(&SrvHealthyConfig{
+		info.Name,
+		info.Duration,
+		info.Threshold})
 	if err == nil {
 		if hi.HealthCount > info.Peak {
 			err = MonitorSrvCountPeakErr
@@ -283,7 +297,8 @@ func (m *monitor) MatchScope(info *SrvConfigInfo) (*healthInfo, error) {
 func (m *monitor) matchScope(info *SrvConfigInfo) (string, error) {
 
 	var msg string
-	hi, err := m.MatchEqual(info)
+	hi, err := m.MatchScope(info)
+
 	healthCount := -1
 	if err == nil {
 
@@ -297,7 +312,10 @@ func (m *monitor) matchScope(info *SrvConfigInfo) (string, error) {
 
 // 服务数量等值匹配
 func (m *monitor) MatchEqual(info *SrvConfigInfo) (*healthInfo, error) {
-	hi, err := m.GetHealth(info)
+	hi, err := m.GetHealth(&SrvHealthyConfig{
+		info.Name,
+		info.Duration,
+		info.Threshold})
 	if err == nil {
 		if hi.HealthCount != info.Count() {
 			err = MonitorSrvCountEqualErr
@@ -342,7 +360,7 @@ func (m *monitor) GetHealthyClient(name string) (healthy.CycloneHealthyService, 
 	return hc, nil
 }
 
-// 删除节点
+// 删除节点, 程序非假死状态, 服务节点会重连注册中心
 func (m *monitor) removeNode(name string, node *registry.Node) error {
 	return m.Deregister(&registry.Service{
 		Name: name,
@@ -352,8 +370,8 @@ func (m *monitor) removeNode(name string, node *registry.Node) error {
 	)
 }
 
-// 健康状态检查
-func (m *monitor) health(srv []*registry.Service, info *SrvConfigInfo) (*healthInfo, error) {
+// 健康状态检查, 不是监控当前服务和配置是否一致
+func (m *monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*healthInfo, error) {
 	var hi = &healthInfo{Count: len(srv)}
 	var healthCount int
 	for _, service := range srv {
@@ -379,16 +397,17 @@ func (m *monitor) health(srv []*registry.Service, info *SrvConfigInfo) (*healthI
 					option.Address = []string{node.Address}
 				},
 			)
-
 			if err != nil {
-				logging.Errorw("Cyclone.Monitor.Health.CliQuery.Healthy.Error",
+				logging.Errorw("Cyclone.Monitor.Health.ClientQuery.Healthy.Error",
 					"err", err)
-				return nil, err
+				if res == nil {
+					res = &healthy.CycloneResponse{}
+				}
 			}
 
 			// 计数
 			hb := m.getHeartBeat(info)
-			st := hb.AddSignal(&healthSignal{res, m.alert})
+			st := hb.AddSignal(&healthSignal{res})
 			// 状态计数
 			if hb.Status() {
 
@@ -405,14 +424,17 @@ func (m *monitor) health(srv []*registry.Service, info *SrvConfigInfo) (*healthI
 
 			}
 			// 健康计数
-
 			si := &SrvInfo{
 				Id:      node.Id,
 				Address: node.Address,
 				Tags:    node.Metadata,
-				ApiInfo: res.Response.ApiInfo,
 				Error:   st,
 			}
+
+			if res.Response != nil {
+				si.ApiInfo = res.Response.ApiInfo
+			}
+
 			if st == nil {
 				healthCount += 1
 				hi.Healthy = append(hi.Healthy, si)
@@ -426,12 +448,13 @@ func (m *monitor) health(srv []*registry.Service, info *SrvConfigInfo) (*healthI
 	return hi, nil
 }
 
-func (m *monitor) getHeartBeat(info *SrvConfigInfo) *rogue.HeartBeat {
+func (m *monitor) getHeartBeat(info *SrvHealthyConfig) *rogue.HeartBeat {
 	var hb *rogue.HeartBeat
 	if tmpHb, ok := heartBeats[info.Name]; ok {
 		hb = tmpHb
 	} else {
 		hb = rogue.NewHeartBeat(info.Threshold, info.Threshold)
+		heartBeats[info.Name] = hb
 	}
 	return hb
 }
@@ -465,7 +488,6 @@ func (m *monitor) monitorService(conf *MonitorConfig) []string {
 			msg = getHeadMsg("ServiceConfigError", info.Name, info.Count(), -1, err)
 		} else {
 			msg, err = m.matchFunc(info)
-	fmt.Println(err)
 		}
 
 		if err != nil {
@@ -576,7 +598,6 @@ func Clear() {
 
 type healthSignal struct {
 	res *healthy.CycloneResponse
-	ch  chan string
 }
 
 var (

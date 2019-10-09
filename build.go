@@ -1,8 +1,7 @@
 package cyclone
 
 import (
-	healthy "cyclone/healthy"
-	"fmt"
+	healthy "github.com/braveghost/cyclone/healthy"
 	logging "github.com/braveghost/joker"
 	"github.com/micro/go-micro"
 	"github.com/micro/go-micro/registry"
@@ -158,10 +157,11 @@ func NewServiceBuilder(srv micro.Service, fn checker, hdlr healthy.CycloneHealth
 	if set.Interval <= 0 {
 		set.Interval = defaultHealthInterval
 	}
-
-	err := healthy.RegisterCycloneHealthyHandler(srv.Server(), hdlr)
-	if err != nil {
-		return nil, MicroServiceHealthHandlerErr
+	if hdlr != nil {
+		err := healthy.RegistryHealthy(srv.Server(), hdlr)
+		if err != nil {
+			return nil, MicroServiceHealthHandlerErr
+		}
 	}
 
 	return &ServiceBuilder{
@@ -193,12 +193,11 @@ func defaultCheckerHealth(sb *ServiceBuilder) {
 			sb.error <- err
 		}
 
-		body, err := m.Run()
+		_, err = m.Run()
 		if err == nil {
 			sb.start <- &struct{}{}
 			return
 		}
-		fmt.Println(body)
 		time.Sleep(time.Duration(RandomInt64n(min, max)))
 	}
 

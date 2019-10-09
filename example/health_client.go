@@ -1,95 +1,39 @@
 package main
 
 import (
-	"context"
-	proto "cyclone/example/proto"
-	healthy "cyclone/healthy"
 	"fmt"
-	"github.com/micro/go-micro"
-
-	"cyclone"
-
-	cli "github.com/micro/go-micro/service/grpc"
+	"github.com/braveghost/cyclone"
 )
 
-var (
-	FuserName = "Banner.Carousel"
-)
-var iClient healthy.CycloneHealthyService
-
-func GetHealthyClient() (healthy.CycloneHealthyService, error) {
-	if iClient == nil {
-		reg, _ := cyclone.NewRegistry(&cyclone.RegistryConf{
-			Registry:        "consul",
-			RegistryAddress: []string{"127.0.0.1:8500"},
-		})
-
-		srv := cli.NewService(
-			micro.Registry(reg),
-		).Client()
-		srv.Init()
-		iClient = healthy.NewCycloneHealthyService("test_healthy", srv)
-	}
-	return iClient, nil
-}
-
-var iiClient proto.CycloneService
-
-func GetCycloneClient() (proto.CycloneService, error) {
-	if iiClient == nil {
-
-		reg, _ := cyclone.NewRegistry(&cyclone.RegistryConf{
-			Registry:        "consul",
-			RegistryAddress: []string{"127.0.0.1:8500"},
-		})
-
-		srv := cli.NewService(
-			micro.Registry(reg),
-		).Client()
-		srv.Init()
-		iiClient = proto.NewCycloneService("test_healthy", srv)
-	}
-	return iiClient, nil
-}
 func main() {
 
 	x := &cyclone.MonitorConfig{
-		Registry: &cyclone.RegistryConf{"consul", []string{"127.0.0.1:8500"}},
-		Type:     cyclone.MonitorTypeAddress,
+		Name: "test_healthy",
+		Type: cyclone.MonitorTypeCount,
 		Services: []*cyclone.SrvConfigInfo{
 			{
-				Name:  "go.micro.util.srv.zipcode",
-				Hosts: []string{"127.0.0.1:54901"},
+				Name:   "test_healthy",
+				Peak:   2,
+				Valley: 1,
 			},
 		},
-		Match: cyclone.MatchTypeFull,
+		Match: cyclone.MatchTypeScope,
 	}
-	m, _ := cyclone.NewMonitor("TestMonitorAddressFull", x)
-	fmt.Println(m.Run())
-
-	iCli, _ := GetHealthyClient()
-
-	innerRes, innerErr := iCli.Healthy(
-		context.Background(),
-		&healthy.CycloneRequest{
-		},
-
-		//func(option *client.CallOptions) {
-		//	option.Address = []string{"10.xxx.xxx.15:63372"}
-		//},
-	)
-	fmt.Println(innerRes, innerErr)
-	iiCli, _ := GetCycloneClient()
-
-	iinnerRes, iinnerErr := iiCli.Cyclone(
-		context.Background(),
-		&proto.Request{
-		},
-
-		//func(option *client.CallOptions) {
-		//	option.Address = []string{"10.xxx.xxx.15:63372"}
-		//},
-	)
-	fmt.Println("xxxxxx", iinnerRes, iinnerErr)
-
+	r, _ := cyclone.NewRegistry(&cyclone.RegistryConf{"consul", []string{"127.0.0.1:8500"}})
+	m, _ := cyclone.NewMonitor(r, x)
+	for i := 0; i <= 10; i++ {
+		fmt.Println(m.Run())
+		//
+		//srvs, err := m.GetHealth(&SrvHealthyConfig{
+		//	Name:      "test_healthy",
+		//	Duration:  10,
+		//	Threshold: 5,
+		//})
+		//if err != nil {
+		//	fmt.Println(err)
+		//} else {
+		//
+		//	fmt.Println(srvs.Sick, srvs.Healthy)
+		//}
+	}
 }

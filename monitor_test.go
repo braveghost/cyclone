@@ -12,7 +12,7 @@ func TestMonitorDelNodeFull(t *testing.T) {
 		Services: []*SrvConfigInfo{
 			{
 				Name:  "test_healthy",
-				Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
+				Hosts: []string{"10.60.204.18:59016"},
 			},
 		},
 		Match: MatchTypeFull,
@@ -20,13 +20,27 @@ func TestMonitorDelNodeFull(t *testing.T) {
 
 	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
 	m, _ := NewMonitor(r, x)
+	//fmt.Println(m.Run())
+	//
 
-	srvs, _ := m.GetService("test_healthy")
-	fmt.Println(srvs[0].Nodes)
-	m.removeNode(srvs[0].Name, srvs[0].Nodes[0])
+	for i := 0; i <= 10; i++ {
 
-	sss, _ := m.GetService("test_healthy")
-	fmt.Println(sss[0].Nodes)
+		srvs, err := m.GetHealth(&SrvHealthyConfig{
+			Name:      "test_healthy",
+			Duration:  10,
+			Threshold: 5,
+		})
+		if err != nil {
+			fmt.Println(err)
+		} else {
+
+			fmt.Println(srvs.Sick, srvs.Healthy)
+		}
+	}
+	////m.removeNode(srvs[0].Name, srvs[0].Nodes[0])
+	//
+	//sss, _ := m.GetService("test_healthy")
+	//fmt.Println(sss[0].Nodes)
 
 }
 func TestMonitorAddressFull(t *testing.T) {
@@ -94,8 +108,10 @@ func TestMonitorEqual(t *testing.T) {
 		Type: MonitorTypeCount,
 		Services: []*SrvConfigInfo{
 			{
-				Name:  "test_healthy",
-				Hosts: []string{"127.0.0.1", "127.0.0.2"},
+				Name:      "test_healthy",
+				Hosts:     []string{"127.0.0.1", "127.0.0.2"},
+				Duration:  10,
+				Threshold: 5,
 			},
 		},
 		Match: MatchTypeEqual,
@@ -104,6 +120,21 @@ func TestMonitorEqual(t *testing.T) {
 	m, _ := NewMonitor(r, x)
 	fmt.Println(m.Run())
 
+	for i := 0; i <= 10; i++ {
+		fmt.Println(m.Run())
+		//
+		//srvs, err := m.GetHealth(&SrvHealthyConfig{
+		//	Name:      "test_healthy",
+		//	Duration:  10,
+		//	Threshold: 5,
+		//})
+		//if err != nil {
+		//	fmt.Println(err)
+		//} else {
+		//
+		//	fmt.Println(srvs.Sick, srvs.Healthy)
+		//}
+	}
 }
 
 func TestMonitorScope(t *testing.T) {
@@ -122,5 +153,19 @@ func TestMonitorScope(t *testing.T) {
 	}
 	r, _ := NewRegistry(&RegistryConf{"consul", []string{"127.0.0.1:8500"}})
 	m, _ := NewMonitor(r, x)
-	fmt.Println(m.Run())
+	for i := 0; i <= 10; i++ {
+		fmt.Println(m.Run())
+		//
+		//srvs, err := m.GetHealth(&SrvHealthyConfig{
+		//	Name:      "test_healthy",
+		//	Duration:  10,
+		//	Threshold: 5,
+		//})
+		//if err != nil {
+		//	fmt.Println(err)
+		//} else {
+		//
+		//	fmt.Println(srvs.Sick, srvs.Healthy)
+		//}
+	}
 }
