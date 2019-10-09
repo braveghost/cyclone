@@ -158,7 +158,7 @@ func NewServiceBuilder(srv micro.Service, fn checker, hdlr healthy.CycloneHealth
 		set.Interval = defaultHealthInterval
 	}
 	if hdlr != nil {
-		err := healthy.RegistryHealthy(srv.Server(), hdlr)
+		err := healthy.RegisterCycloneHealthyHandler(srv.Server(), healthy.HealthyHandler{})
 		if err != nil {
 			return nil, MicroServiceHealthHandlerErr
 		}

@@ -8,16 +8,19 @@ import (
 func main() {
 
 	x := &cyclone.MonitorConfig{
-		Name: "test_healthy",
+		Name: "go.micro.util.srv.banner",
 		Type: cyclone.MonitorTypeCount,
 		Services: []*cyclone.SrvConfigInfo{
 			{
-				Name:   "test_healthy",
+				Name:   "go.micro.util.srv.banner",
 				Peak:   2,
-				Valley: 1,
+			},
+			{
+				Name:   "go.micro.util.srv.mail",
+				Peak:   2,
 			},
 		},
-		Match: cyclone.MatchTypeScope,
+		Match: cyclone.MatchTypeEqual,
 	}
 	r, _ := cyclone.NewRegistry(&cyclone.RegistryConf{"consul", []string{"127.0.0.1:8500"}})
 	m, _ := cyclone.NewMonitor(r, x)

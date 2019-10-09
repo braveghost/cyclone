@@ -300,8 +300,7 @@ func (m *monitor) matchScope(info *SrvConfigInfo) (string, error) {
 	hi, err := m.MatchScope(info)
 
 	healthCount := -1
-	if err == nil {
-
+	if hi != nil{
 		healthCount = hi.HealthCount
 		for idx, l := range hi.Healthy {
 			msg += getActiveMsg(idx+1, l.Id, l.Address, "null")
@@ -330,7 +329,7 @@ func (m *monitor) matchEqual(info *SrvConfigInfo) (string, error) {
 	var msg string
 	hi, err := m.MatchEqual(info)
 	healthCount := -1
-	if err == nil {
+	if hi != nil {
 
 		healthCount = hi.HealthCount
 		for idx, l := range hi.Healthy {
@@ -382,7 +381,7 @@ func (m *monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 			if !(ok && val == clusterMaster) {
 				// 不是依赖 cyclone 启动的服务
 				logging.Warnw("Cyclone.ServiceBuilder.HealthFunc.Tag.Warn",
-					"tags", tags)
+					"tags", tags, "node", node)
 				continue
 			}
 

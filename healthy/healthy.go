@@ -1,30 +1,22 @@
 package cyclone_healthy
 
 import (
+	"context"
 	"errors"
 	"github.com/afex/hystrix-go/hystrix"
+)
 
-	"github.com/micro/go-micro/server"
+var (
+	defaultHealthyFunctionConfig *HealthyHandlerConfig
 )
 
 type HealthyFunc func() (*ApiInfo, error)
 
-func RegistryHealthy(s server.Server, hdlr CycloneHealthyHandler, opts ...server.HandlerOption) error {
-	return RegisterCycloneHealthyHandler(s, hdlr, opts...)
-}
-
-func InitResponse(srvName string, res *CycloneResponse) *CycloneResponse {
+func InitResponse(srvName string, res *CycloneResponse) {
 	res.Code = CycloneResponse_Healthy
 	res.Response = &ServiceStatus{
 		Name:    srvName,
 		ApiInfo: []*ApiInfo{},
-	}
-	return &CycloneResponse{
-		Code: CycloneResponse_Healthy,
-		Response: &ServiceStatus{
-			Name:    srvName,
-			ApiInfo: []*ApiInfo{},
-		},
 	}
 }
 
@@ -53,4 +45,32 @@ func GetHealthyInfo(name string, res *CycloneResponse, fn HealthyFunc) {
 
 		return nil
 	})
+}
+
+type HealthyHandler struct {
+}
+
+func (hh HealthyHandler) Healthy(ctx context.Context, req *CycloneRequest, res *CycloneResponse) error {
+	InitResponse(defaultHealthyFunctionConfig.ServiceName, res)
+
+	for _, l := range defaultHealthyFunctionConfig.Functions {
+		GetHealthyInfo(l.FuserName, res, l.Func)
+	}
+	return nil
+}
+
+type HealthyHandlerConfig struct {
+	ServiceName string
+	Functions   []*HealthyFunction
+}
+
+type HealthyFunction struct {
+	Func      HealthyFunc
+	FuserName string
+}
+
+// 注册健康检查函数, srvName 服务名称, fuserName 熔断器配置名称, fns 接口健康检查函数
+func RegistryHealthy(hhc *HealthyHandlerConfig) {
+	defaultHealthyFunctionConfig = hhc
+
 }

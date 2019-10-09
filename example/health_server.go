@@ -15,7 +15,7 @@ type testHealthyHandler struct {
 
 func (hh testHealthyHandler) Healthy(ctx context.Context, req *healthy.CycloneRequest, res *healthy.CycloneResponse) error {
 	fmt.Println(res)
-	res = healthy.InitResponse("healthy", res)
+	healthy.InitResponse("healthy", res)
 	fmt.Println(res.Code, res.Response, res.Response.Name, res.Response.ApiInfo)
 	healthy.GetHealthyInfo("xxx", res, func() (*healthy.ApiInfo, error) {
 		return nil, nil
