@@ -21,6 +21,7 @@ func (hh testHealthyHandler) Healthy(ctx context.Context, req *healthy.CycloneRe
 		return nil, nil
 	})
 	fmt.Println(res.Code, res.Response, res.Response.Name, res.Response.ApiInfo)
+
 	return nil
 }
 
@@ -36,9 +37,14 @@ func main() {
 	service := grpc.NewService(
 		micro.Name("test_healthy"),
 	)
+	// 注册健康检查函数
+	//healthy.RegistryHealthy(nil)
+
+
 	_ = proto.RegisterCycloneHandler(service.Server(), &testCycloneHandler{})
-	srv, err := cyclone.NewServiceBuilder(service, nil, &testHealthyHandler{}, &cyclone.Setting{
+	srv, err := cyclone.NewServiceBuilder(service, nil,  &cyclone.Setting{
 		//srv, err := cyclone.NewServiceBuilder(service, nil, nil, &cyclone.Setting{
+		// 运行态配置, 检查tag
 		Masters:  2,
 		Interval: 5,
 		Tags:     map[string]string{"test_service": "miller"},
@@ -46,17 +52,13 @@ func main() {
 			Registry:        "consul",
 			RegistryAddress: []string{"127.0.0.1:8500"},
 		},
-		MonitorConfig: &cyclone.MonitorConfig{
-			Name: "test_healthy",
-			Type: cyclone.MonitorTypeCount,
-			Services: []*cyclone.SrvConfigInfo{
-				{
-					Name:  "test_healthy",
-					Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
-				},
-			},
-			Match: cyclone.MatchTypeEqual,
-		},
+
+		// 监控配置
+		MonitorConfig: cyclone.McCountEqual("test_healthy",
+			&cyclone.SrvConfigInfo{
+				Name:  "test_healthy",
+				Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
+			}),
 	})
 	if err == nil {
 		if err := srv.Run(); err != nil {

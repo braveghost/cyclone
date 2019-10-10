@@ -35,6 +35,7 @@ var _ server.Option
 
 type CycloneHealthyService interface {
 	Healthy(ctx context.Context, in *CycloneRequest, opts ...client.CallOption) (*CycloneResponse, error)
+	Close(ctx context.Context, in *CycloneRequest, opts ...client.CallOption) (*CycloneCloseResponse, error)
 }
 
 type cycloneHealthyService struct {
@@ -65,15 +66,27 @@ func (c *cycloneHealthyService) Healthy(ctx context.Context, in *CycloneRequest,
 	return out, nil
 }
 
+func (c *cycloneHealthyService) Close(ctx context.Context, in *CycloneRequest, opts ...client.CallOption) (*CycloneCloseResponse, error) {
+	req := c.c.NewRequest(c.name, "CycloneHealthy.Close", in)
+	out := new(CycloneCloseResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for CycloneHealthy service
 
 type CycloneHealthyHandler interface {
 	Healthy(context.Context, *CycloneRequest, *CycloneResponse) error
+	Close(context.Context, *CycloneRequest, *CycloneCloseResponse) error
 }
 
 func RegisterCycloneHealthyHandler(s server.Server, hdlr CycloneHealthyHandler, opts ...server.HandlerOption) error {
 	type cycloneHealthy interface {
 		Healthy(ctx context.Context, in *CycloneRequest, out *CycloneResponse) error
+		Close(ctx context.Context, in *CycloneRequest, out *CycloneCloseResponse) error
 	}
 	type CycloneHealthy struct {
 		cycloneHealthy
@@ -88,4 +101,8 @@ type cycloneHealthyHandler struct {
 
 func (h *cycloneHealthyHandler) Healthy(ctx context.Context, in *CycloneRequest, out *CycloneResponse) error {
 	return h.CycloneHealthyHandler.Healthy(ctx, in, out)
+}
+
+func (h *cycloneHealthyHandler) Close(ctx context.Context, in *CycloneRequest, out *CycloneCloseResponse) error {
+	return h.CycloneHealthyHandler.Close(ctx, in, out)
 }

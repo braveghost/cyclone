@@ -12,6 +12,7 @@ import (
 	"github.com/micro/go-micro/service/grpc"
 	"github.com/pkg/errors"
 	"strings"
+	"sync"
 )
 
 type (
@@ -37,7 +38,7 @@ const (
 
 var (
 	defaultMonitorConf *MonitorConfig
-	monitorClients     = make(map[string]*monitor)
+	defaultMonitor     *Monitor
 	heartBeats         = make(map[string]*rogue.HeartBeat)
 
 	headMsg = `
@@ -60,8 +61,6 @@ var (
 )
 
 var (
-	MonitorConfIsNullErr      = errors.New("monitor config is null")
-	MonitorAddrISNullErr      = errors.New("monitor registry client address is null")
 	MonitorSrvCountEqualErr   = errors.New("monitor service health count error")
 	MonitorSrvMatchErr        = errors.New("monitor service health match error")
 	MonitorSrvNotFoundErr     = errors.New("monitor service not found")
@@ -70,6 +69,36 @@ var (
 	MonitorSrvCountScopeErr   = errors.New("monitor service config count scope error")
 	MonitorMatchFuncChoiceErr = errors.New("monitor service match choice function error")
 )
+
+func init() {
+	defaultMonitorConf = &MonitorConfig{Name: "default"}
+}
+
+func HasDefaultMonitor() bool {
+	if defaultMonitor == nil {
+		return false
+	}
+	return true
+}
+
+func McCountEqual(name string, services ...*SrvConfigInfo) *MonitorConfig {
+	return &MonitorConfig{
+		Name:     name,
+		Type:     MonitorTypeCount,
+		Services: services,
+		Match:    MatchTypeEqual,
+	}
+}
+
+func McCountScope(name string, services ...*SrvConfigInfo) *MonitorConfig {
+	return &MonitorConfig{
+		Name:     name,
+		Type:     MonitorTypeCount,
+		Services: services,
+		Match:    MatchTypeScope,
+	}
+}
+
 
 type MonitorConfig struct {
 	Name     string           // 配置名称, 根据配置名称单例客户端
@@ -104,11 +133,6 @@ func InitConfig(mc *MonitorConfig) {
 	defaultMonitorConf = mc
 }
 
-//type monitorClient interface {
-//	initClient(rc *RegistryConf) error
-//	HealthService(name string) *srvBaseInfo
-//}
-
 type healthInfo struct {
 	Count       int // 注册中心的对应服务总数量, 暂未使用
 	HealthCount int
@@ -125,15 +149,16 @@ type SrvInfo struct {
 	Error   error
 }
 
-type monitor struct {
+type Monitor struct {
 	registry.Registry
 	conf *MonitorConfig
 	matchFunc
 	alert chan string
 	error chan error
+	lock  sync.Mutex
 }
 
-func (m *monitor) getHost(si *SrvInfo) string {
+func (m *Monitor) getHost(si *SrvInfo) string {
 	switch m.conf.Type {
 	case MonitorTypeAddress:
 		return si.Address
@@ -141,7 +166,7 @@ func (m *monitor) getHost(si *SrvInfo) string {
 	return ""
 }
 
-func (m *monitor) matchErr(tag string) error {
+func (m *Monitor) matchErr(tag string) error {
 	switch m.conf.Type {
 	case MonitorTypeAddress:
 		return errors.Wrapf(MonitorSrvMatchErr, "Match %v address", tag)
@@ -151,7 +176,7 @@ func (m *monitor) matchErr(tag string) error {
 
 type matchInnerFunc func(map[string]*SrvInfo, string) bool
 
-func (m *monitor) matchString(tag, fnTag string, info *SrvConfigInfo, fn matchInnerFunc) (string, error) {
+func (m *Monitor) matchString(tag, fnTag string, info *SrvConfigInfo, fn matchInnerFunc) (string, error) {
 
 	return m.match(
 		tag,
@@ -187,7 +212,7 @@ func (m *monitor) matchString(tag, fnTag string, info *SrvConfigInfo, fn matchIn
 	)
 }
 
-func (m *monitor) match(tag, fnTag string, info *SrvConfigInfo, fn func(*healthInfo) (string, error)) (string, error) {
+func (m *Monitor) match(tag, fnTag string, info *SrvConfigInfo, fn func(*healthInfo) (string, error)) (string, error) {
 	healthCount := -1
 	var msg string
 
@@ -201,12 +226,11 @@ func (m *monitor) match(tag, fnTag string, info *SrvConfigInfo, fn func(*healthI
 		msg, err = fn(hi)
 	}
 	return getHeadMsg(tag, info.Name, info.Count(), healthCount, err) + msg, err
-
 }
 
 // 健康状态检查
-func (m *monitor) GetHealth(info *SrvHealthyConfig) (*healthInfo, error) {
-	var hi *healthInfo
+func (m *Monitor) GetHealth(info *SrvHealthyConfig) (*healthInfo, error) {
+	hi := &healthInfo{}
 	hs, err := m.GetService(info.Name)
 	if err == nil {
 		if len(hs) == 0 {
@@ -219,7 +243,7 @@ func (m *monitor) GetHealth(info *SrvHealthyConfig) (*healthInfo, error) {
 }
 
 // 服务关键字完全匹配
-func (m *monitor) matchFull(info *SrvConfigInfo) (string, error) {
+func (m *Monitor) matchFull(info *SrvConfigInfo) (string, error) {
 
 	return m.matchString(
 		"ServiceMatchFull",
@@ -232,7 +256,7 @@ func (m *monitor) matchFull(info *SrvConfigInfo) (string, error) {
 }
 
 // 服务关键字前缀匹配
-func (m *monitor) matchPrefix(info *SrvConfigInfo) (string, error) {
+func (m *Monitor) matchPrefix(info *SrvConfigInfo) (string, error) {
 	return m.matchString(
 		"ServiceMatchPrefix",
 		"prefix",
@@ -254,7 +278,7 @@ func (m *monitor) matchPrefix(info *SrvConfigInfo) (string, error) {
 }
 
 // 服务关键字包含匹配
-func (m *monitor) matchIn(info *SrvConfigInfo) (string, error) {
+func (m *Monitor) matchIn(info *SrvConfigInfo) (string, error) {
 
 	return m.matchString(
 		"ServiceMatchIn",
@@ -274,7 +298,7 @@ func (m *monitor) matchIn(info *SrvConfigInfo) (string, error) {
 
 }
 
-func (m *monitor) MatchScope(info *SrvConfigInfo) (*healthInfo, error) {
+func (m *Monitor) MatchScope(info *SrvConfigInfo) (*healthInfo, error) {
 	hi, err := m.GetHealth(&SrvHealthyConfig{
 		info.Name,
 		info.Duration,
@@ -294,13 +318,13 @@ func (m *monitor) MatchScope(info *SrvConfigInfo) (*healthInfo, error) {
 	return hi, err
 }
 
-func (m *monitor) matchScope(info *SrvConfigInfo) (string, error) {
+func (m *Monitor) matchScope(info *SrvConfigInfo) (string, error) {
 
 	var msg string
 	hi, err := m.MatchScope(info)
 
 	healthCount := -1
-	if hi != nil{
+	if hi != nil {
 		healthCount = hi.HealthCount
 		for idx, l := range hi.Healthy {
 			msg += getActiveMsg(idx+1, l.Id, l.Address, "null")
@@ -310,7 +334,7 @@ func (m *monitor) matchScope(info *SrvConfigInfo) (string, error) {
 }
 
 // 服务数量等值匹配
-func (m *monitor) MatchEqual(info *SrvConfigInfo) (*healthInfo, error) {
+func (m *Monitor) MatchEqual(info *SrvConfigInfo) (*healthInfo, error) {
 	hi, err := m.GetHealth(&SrvHealthyConfig{
 		info.Name,
 		info.Duration,
@@ -324,7 +348,7 @@ func (m *monitor) MatchEqual(info *SrvConfigInfo) (*healthInfo, error) {
 }
 
 // 服务数量等值匹配
-func (m *monitor) matchEqual(info *SrvConfigInfo) (string, error) {
+func (m *Monitor) matchEqual(info *SrvConfigInfo) (string, error) {
 
 	var msg string
 	hi, err := m.MatchEqual(info)
@@ -342,7 +366,9 @@ func (m *monitor) matchEqual(info *SrvConfigInfo) (string, error) {
 var healthClients = make(map[string]healthy.CycloneHealthyService)
 
 // todo 单例不要 error
-func (m *monitor) GetHealthyClient(name string) (healthy.CycloneHealthyService, error) {
+func (m *Monitor) GetHealthyClient(name string) (healthy.CycloneHealthyService, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	hc, ok := healthClients[name]
 	if !ok {
 
@@ -360,7 +386,8 @@ func (m *monitor) GetHealthyClient(name string) (healthy.CycloneHealthyService, 
 }
 
 // 删除节点, 程序非假死状态, 服务节点会重连注册中心
-func (m *monitor) removeNode(name string, node *registry.Node) error {
+func (m *Monitor) removeNode(name string, node *registry.Node) error {
+
 	return m.Deregister(&registry.Service{
 		Name: name,
 		Nodes: []*registry.Node{
@@ -370,7 +397,7 @@ func (m *monitor) removeNode(name string, node *registry.Node) error {
 }
 
 // 健康状态检查, 不是监控当前服务和配置是否一致
-func (m *monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*healthInfo, error) {
+func (m *Monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*healthInfo, error) {
 	var hi = &healthInfo{Count: len(srv)}
 	var healthCount int
 	for _, service := range srv {
@@ -389,7 +416,7 @@ func (m *monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 			if err != nil {
 				logging.Errorw("Cyclone.Monitor.Health.GetHealthyClient.Error",
 					"err", err)
-				return nil, err
+				return hi, err
 			}
 			res, err := cli.Healthy(context.Background(), &healthy.CycloneRequest{},
 				func(option *client.CallOptions) {
@@ -410,7 +437,7 @@ func (m *monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 			// 状态计数
 			if hb.Status() {
 
-				//	todo 关闭服务, 删除注册中心的内容
+				// 关闭服务, 删除注册中心的内容, 通过 Close 接口关闭服务
 				err = m.removeNode(info.Name, node)
 				if err != nil {
 					logging.Errorw("Cyclone.Monitor.Health.RemoveNode.Error",
@@ -418,7 +445,20 @@ func (m *monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 				} else {
 
 					logging.Infow("Cyclone.Monitor.Health.RemoveNode.Info",
-						"counter", hb.Counter.Sum(), "center_health_count", "")
+						"node_name", info.Name, "counter", hb.Counter.Sum())
+				}
+
+				_, err := cli.Close(context.Background(), &healthy.CycloneRequest{},
+					func(option *client.CallOptions) {
+						option.Address = []string{node.Address}
+					},
+				)
+				if err != nil {
+					logging.Errorw("Cyclone.Monitor.Health.CloseNode.Error",
+						"node_name", info.Name, "node", node, "err", err)
+				}else {
+					logging.Infow("Cyclone.Monitor.Health.CloseNode.Info",
+						"node_name", info.Name)
 				}
 
 			}
@@ -447,7 +487,7 @@ func (m *monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 	return hi, nil
 }
 
-func (m *monitor) getHeartBeat(info *SrvHealthyConfig) *rogue.HeartBeat {
+func (m *Monitor) getHeartBeat(info *SrvHealthyConfig) *rogue.HeartBeat {
 	var hb *rogue.HeartBeat
 	if tmpHb, ok := heartBeats[info.Name]; ok {
 		hb = tmpHb
@@ -474,7 +514,7 @@ func getDeathMsg(idx int, host string) string {
 }
 
 // 规则校验
-func (m *monitor) monitorService(conf *MonitorConfig) []string {
+func (m *Monitor) monitorService(conf *MonitorConfig) []string {
 	var bd []string
 
 	for _, info := range conf.Services {
@@ -497,7 +537,7 @@ func (m *monitor) monitorService(conf *MonitorConfig) []string {
 }
 
 // 启动
-func (m *monitor) Run() ([]string, error) {
+func (m *Monitor) Run() ([]string, error) {
 	return m.monitorService(m.conf), nil
 }
 
@@ -506,19 +546,20 @@ func checkScopeConf(sci *SrvConfigInfo) error {
 	if sci.Peak < 0 {
 		return errors.Wrapf(MonitorSrvCountScopeErr, "%v SrvConfigInfo.Peak < 0", sci.Name)
 	}
+
 	if sci.Valley < 0 {
 		return errors.Wrapf(MonitorSrvCountScopeErr, "%v SrvConfigInfo.Valley < 0", sci.Name)
-
 	}
+
 	if sci.Peak < sci.Valley {
 		return errors.Wrapf(MonitorSrvCountScopeErr, "%v SrvConfigInfo.Peak < SrvConfigInfo.Valley", sci.Name)
-
 	}
+
 	return nil
 }
 
 // 选择规则处理函数
-func (m *monitor) matchChoice() matchFunc {
+func (m *Monitor) matchChoice() matchFunc {
 
 	tp := m.conf.Type
 	var f matchFunc
@@ -556,43 +597,68 @@ func (m *monitor) matchChoice() matchFunc {
 	return f
 }
 
-// 创建监控器, 单例
-func NewMonitor(reg registry.Registry, mc *MonitorConfig) (*monitor, error) {
-	defaultMonitor, ok := monitorClients[mc.Name]
-	if ok && defaultMonitor != nil {
+// 创建监控器
+func NewMonitor(reg registry.Registry, mc *MonitorConfig) (*Monitor, error) {
+	return newMonitor(reg, mc)
+}
+
+func (m *Monitor) UpdateRegistry(reg registry.Registry) error {
+
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.Registry = reg
+	healthClients = make(map[string]healthy.CycloneHealthyService)
+	return nil
+}
+
+func (m *Monitor) UpdateConfig(mc *MonitorConfig) error {
+
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.conf = mc
+
+	fn := m.matchChoice()
+	if fn == nil {
+		return errors.Wrap(MonitorMatchFuncChoiceErr, "monitor update config")
+	}
+	m.matchFunc = fn
+
+	return nil
+}
+
+// default monitor
+func GetMonitor(reg registry.Registry, mc *MonitorConfig) (*Monitor, error) {
+	if defaultMonitor != nil {
 		return defaultMonitor, nil
 	}
-	return newMonitor(reg, mc)
+	var err error
+	defaultMonitor, err = newMonitor(reg, mc)
+	return defaultMonitor, err
 
 }
 
 // 创建监控器，
-func newMonitor(reg registry.Registry, mc *MonitorConfig) (*monitor, error) {
+func newMonitor(reg registry.Registry, mc *MonitorConfig) (*Monitor, error) {
+	if mc == nil {
+		mc = defaultMonitorConf
+	}
 	var err error
-	var mt *monitor
-	mt = &monitor{
+	var mt *Monitor
+	mt = &Monitor{
 		Registry: reg,
 		conf:     mc,
 		alert:    make(chan string),
 		error:    make(chan error),
+		lock:     sync.Mutex{},
 	}
 	fn := mt.matchChoice()
 	if fn == nil {
 		return nil, MonitorMatchFuncChoiceErr
 	}
 	mt.matchFunc = fn
-	monitorClients[mc.Name] = mt
 	return mt, err
-}
-
-// 关闭某一监控器
-func Close(name string) {
-	delete(monitorClients, name)
-}
-
-// 清空监控器
-func Clear() {
-	monitorClients = make(map[string]*monitor)
 }
 
 type healthSignal struct {

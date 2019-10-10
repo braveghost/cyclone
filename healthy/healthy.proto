@@ -7,11 +7,14 @@ package cyclone.healthy;
 service CycloneHealthy {
     rpc Healthy (CycloneRequest) returns (CycloneResponse) {
     }
+    rpc Close (CycloneRequest) returns (CycloneCloseResponse) {
+    }
 }
 
 message CycloneRequest {
 }
-
+message CycloneCloseResponse {
+}
 message ApiInfo {
     string api = 1;
     string error = 2;

@@ -1,6 +1,7 @@
 package cyclone
 
 import (
+	errr "errors"
 	healthy "github.com/braveghost/cyclone/healthy"
 	logging "github.com/braveghost/joker"
 	"github.com/micro/go-micro"
@@ -20,6 +21,7 @@ var (
 var (
 	MicroServiceIsNullErr        = errors.New("Micro service is null")
 	MicroServiceHealthHandlerErr = errors.New("Micro service health handler is error")
+	MicroServicerErr             = errors.New("Micro service is null")
 )
 
 func SetAlarmFunc(fn func(string)) {
@@ -29,27 +31,23 @@ func SetAlarmFunc(fn func(string)) {
 type checker func(*ServiceBuilder)
 
 type ServiceBuilder struct {
-	name         string
-	tags         map[string]string
-	count        int
-	status       bool
-	interval     int64
-	healthFunc   checker
-	service      micro.Service
-	start        chan *struct{}
-	alert        chan string
-	error        chan error
-	config       chan *Setting // 备用, 更新配置使用, 免配置中心侵入
-	lock         sync.Mutex
-	registerConf *RegistryConf
-	register     registry.Registry
-	monitorConf  *MonitorConfig
+	*Setting
+	Name       string
+	status     bool
+	HealthFunc checker
+	Service    micro.Service
+	start      chan *struct{}
+	alert      chan string
+	error      chan error
+	config     chan *Setting // 备用, 更新配置使用, 免配置中心侵入
+	lock       sync.Mutex
+	register   registry.Registry
 }
 
 // 加载集群 tag
 func (sb *ServiceBuilder) getTag(ops ...micro.Option) []micro.Option {
-	sb.tags[clusterKey] = clusterMaster
-	ops = append(ops, micro.Metadata(sb.tags))
+	sb.Tags[clusterKey] = clusterMaster
+	ops = append(ops, micro.Metadata(sb.Tags))
 	return ops
 }
 
@@ -57,7 +55,7 @@ func (sb *ServiceBuilder) getTag(ops ...micro.Option) []micro.Option {
 func (sb *ServiceBuilder) getRegister(ops ...micro.Option) ([]micro.Option, error) {
 
 	if sb.register == nil {
-		register, err := NewRegistry(sb.registerConf)
+		register, err := NewRegistry(sb.Registry)
 		if err != nil {
 			return ops, err
 		}
@@ -81,19 +79,6 @@ func (sb *ServiceBuilder) extendOps(ops ...micro.Option) ([]micro.Option, error)
 	}
 	ops = sb.getTag(ops...)
 	return ops, nil
-}
-
-func (sb *ServiceBuilder) discovery() ([]*SrvInfo, error) {
-	//m, err := NewMonitor("ServiceBuilderDiscovery", &MonitorConfig{
-	//	Registry: sb.registerConf,
-	//})
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
-	//
-	//pp := sb.register.GetService(sb.name)
-	return nil, nil
 }
 
 // 监控提醒
@@ -120,8 +105,8 @@ func (sb *ServiceBuilder) Run(ops ...micro.Option) error {
 	if err != nil {
 		return err
 	}
-	go sb.healthFunc(sb)
-	srv := sb.service
+	go sb.HealthFunc(sb)
+	srv := sb.Service
 
 	if srv != nil {
 		select {
@@ -143,7 +128,15 @@ type Setting struct {
 	MonitorConfig *MonitorConfig
 }
 
-func NewServiceBuilder(srv micro.Service, fn checker, hdlr healthy.CycloneHealthyHandler, set *Setting) (*ServiceBuilder, error) {
+func NewServiceBuilder(srv micro.Service, fn checker, set *Setting) (*ServiceBuilder, error) {
+
+	if srv == nil {
+		return nil, MicroServicerErr
+	}
+	if set == nil {
+		set = &Setting{}
+	}
+
 	if fn == nil {
 		fn = defaultCheckerHealth
 	}
@@ -151,50 +144,56 @@ func NewServiceBuilder(srv micro.Service, fn checker, hdlr healthy.CycloneHealth
 	if set.Masters <= 0 {
 		set.Masters = defaultMasterCount
 	}
+
 	if set.Tags == nil {
 		set.Tags = make(map[string]string)
 	}
 	if set.Interval <= 0 {
 		set.Interval = defaultHealthInterval
 	}
-	if hdlr != nil {
-		err := healthy.RegisterCycloneHealthyHandler(srv.Server(), healthy.HealthyHandler{})
-		if err != nil {
-			return nil, MicroServiceHealthHandlerErr
-		}
+
+
+	healthy.RegistryHealthy(nil)
+
+
+	err := healthy.RegisterCycloneHealthyHandler(srv.Server(), healthy.HealthyHandler{})
+	if err != nil {
+		return nil, MicroServiceHealthHandlerErr
 	}
 
 	return &ServiceBuilder{
-		count:        set.Masters,
-		tags:         set.Tags,
-		service:      srv,
-		interval:     set.Interval,
-		healthFunc:   fn,
-		registerConf: set.Registry,
-		monitorConf:  set.MonitorConfig,
-
-		name:  srv.Server().Options().Name,
-		start: make(chan *struct{}, 1),
-		error: make(chan error),
-		alert: make(chan string),
-		lock:  sync.Mutex{},
+		Setting:    set,
+		Name:       srv.Server().Options().Name,
+		Service:    srv,
+		HealthFunc: fn,
+		start:      make(chan *struct{}, 1),
+		error:      make(chan error),
+		alert:      make(chan string),
+		lock:       sync.Mutex{},
 	}, nil
 }
 
 // 数量检查, master 节点如果小于指定数量就启动, 否则等待并监听服务状态状态
 func defaultCheckerHealth(sb *ServiceBuilder) {
-	max := sb.interval * int64(time.Second)
+	max := sb.Interval * int64(time.Second)
 	min := int64(0.8 * float64(max))
 
 	for {
-		m, err := NewMonitor(sb.register, sb.monitorConf)
+		m, err := NewMonitor(sb.register, sb.MonitorConfig)
 		if err != nil {
 			//	todo 告警
 			sb.error <- err
+			return
 		}
+		hi, err := m.GetHealth(&SrvHealthyConfig{
+			Name:      sb.Name,
+			Duration:  max * 5,
+			Threshold: 3,
+		})
+		logging.Debugw("Cyclone.ServiceBuilder.CheckerHealth.GetHealth.Debug",
+			"count", sb.Masters, "health_count",hi.HealthCount, "err", err)
 
-		_, err = m.Run()
-		if err == nil {
+		if errr.Is(err, MonitorSrvNotFoundErr) || hi.HealthCount  < sb.Masters{
 			sb.start <- &struct{}{}
 			return
 		}
