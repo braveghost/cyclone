@@ -5,25 +5,13 @@ import (
 	"fmt"
 	"github.com/braveghost/cyclone"
 	proto "github.com/braveghost/cyclone/example/proto"
-	healthy "github.com/braveghost/cyclone/healthy"
+	cyclone_healthy "github.com/braveghost/cyclone/healthy"
+	"github.com/braveghost/joker"
+	"github.com/braveghost/meteor/mode"
 	"github.com/micro/go-micro"
 	"github.com/micro/go-micro/service/grpc"
+	"log"
 )
-
-type testHealthyHandler struct {
-}
-
-func (hh testHealthyHandler) Healthy(ctx context.Context, req *healthy.CycloneRequest, res *healthy.CycloneResponse) error {
-	fmt.Println(res)
-	healthy.InitResponse("healthy", res)
-	fmt.Println(res.Code, res.Response, res.Response.Name, res.Response.ApiInfo)
-	healthy.GetHealthyInfo("xxx", res, func() (*healthy.ApiInfo, error) {
-		return nil, nil
-	})
-	fmt.Println(res.Code, res.Response, res.Response.Name, res.Response.ApiInfo)
-
-	return nil
-}
 
 type testCycloneHandler struct {
 }
@@ -33,16 +21,30 @@ func (hh testCycloneHandler) Cyclone(ctx context.Context, req *proto.Request, re
 	return nil
 }
 
+func CarouselHealthy() (*cyclone_healthy.ApiInfo, error) {
+	return nil, nil
+
+}
 func main() {
+
+	joker.GetLogger("xxxx", mode.ModeLocal)
+
 	service := grpc.NewService(
 		micro.Name("test_healthy"),
 	)
 	// 注册健康检查函数
-	//healthy.RegistryHealthy(nil)
-
-
+	cyclone_healthy.RegistryHealthy(
+		&cyclone_healthy.HealthyHandlerConfig{
+			ServiceName: "test_healthy",
+			Functions: []*cyclone_healthy.HealthyFunction{
+				{
+					CarouselHealthy,
+					"",
+				},
+			},
+		})
 	_ = proto.RegisterCycloneHandler(service.Server(), &testCycloneHandler{})
-	srv, err := cyclone.NewServiceBuilder(service, nil,  &cyclone.Setting{
+	srv, err := cyclone.NewServiceBuilder(service, nil, &cyclone.Setting{
 		//srv, err := cyclone.NewServiceBuilder(service, nil, nil, &cyclone.Setting{
 		// 运行态配置, 检查tag
 		Masters:  2,
@@ -60,7 +62,11 @@ func main() {
 				Hosts: []string{"10.60.204.15:52303", "10.60.204.15:52360"},
 			}),
 	})
+
 	if err == nil {
+		srv.RegisterSameStart(func() {
+			log.Println("same start")
+		})
 		if err := srv.Run(); err != nil {
 			fmt.Println(err)
 		}

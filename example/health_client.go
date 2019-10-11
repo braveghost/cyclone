@@ -8,16 +8,12 @@ import (
 func main() {
 
 	x := &cyclone.MonitorConfig{
-		Name: "go.micro.util.srv.banner",
+		Name: "test_healthy",
 		Type: cyclone.MonitorTypeCount,
 		Services: []*cyclone.SrvConfigInfo{
 			{
-				Name:   "go.micro.util.srv.banner",
-				Peak:   2,
-			},
-			{
-				Name:   "go.micro.util.srv.mail",
-				Peak:   2,
+				Name: "test_healthy",
+				Peak: 1,
 			},
 		},
 		Match: cyclone.MatchTypeEqual,

@@ -1,9 +1,9 @@
 package cyclone
 
 import (
-	errr "errors"
 	healthy "github.com/braveghost/cyclone/healthy"
 	logging "github.com/braveghost/joker"
+	"github.com/braveghost/meteor/errutil"
 	"github.com/micro/go-micro"
 	"github.com/micro/go-micro/registry"
 	"github.com/pkg/errors"
@@ -12,16 +12,17 @@ import (
 	"time"
 )
 
-var (
+const (
 	defaultHealthInterval = int64(5)
 	defaultMasterCount    = 1
-	alarmFunc             func(string)
 )
 
 var (
+	alarmFunc func(string)
+	// Error
 	MicroServiceIsNullErr        = errors.New("Micro service is null")
 	MicroServiceHealthHandlerErr = errors.New("Micro service health handler is error")
-	MicroServicerErr             = errors.New("Micro service is null")
+	MicroServicesErr             = errors.New("Micro service is null")
 )
 
 func SetAlarmFunc(fn func(string)) {
@@ -32,16 +33,17 @@ type checker func(*ServiceBuilder)
 
 type ServiceBuilder struct {
 	*Setting
-	Name       string
-	status     bool
-	HealthFunc checker
-	Service    micro.Service
-	start      chan *struct{}
-	alert      chan string
-	error      chan error
-	config     chan *Setting // 备用, 更新配置使用, 免配置中心侵入
-	lock       sync.Mutex
-	register   registry.Registry
+	Name         string
+	status       bool
+	HealthFunc   checker
+	Service      micro.Service
+	start        chan *struct{}
+	sameStartFns []func()
+	alert        chan string
+	error        chan error
+	config       chan *Setting // 备用, 更新配置使用, 免配置中心侵入
+	lock         sync.Mutex
+	register     registry.Registry
 }
 
 // 加载集群 tag
@@ -97,6 +99,11 @@ func (sb *ServiceBuilder) alarm() {
 
 	}
 }
+
+func (sb *ServiceBuilder) RegisterSameStart(fns ...func()) {
+	sb.sameStartFns = fns
+
+}
 func (sb *ServiceBuilder) Run(ops ...micro.Option) error {
 	go sb.alarm()
 	var err error
@@ -112,6 +119,9 @@ func (sb *ServiceBuilder) Run(ops ...micro.Option) error {
 		select {
 		case <-sb.start:
 			srv.Init(ops...)
+			for _, fn := range sb.sameStartFns {
+				go fn()
+			}
 			return srv.Run()
 		case err = <-sb.error:
 			return err
@@ -131,7 +141,7 @@ type Setting struct {
 func NewServiceBuilder(srv micro.Service, fn checker, set *Setting) (*ServiceBuilder, error) {
 
 	if srv == nil {
-		return nil, MicroServicerErr
+		return nil, MicroServicesErr
 	}
 	if set == nil {
 		set = &Setting{}
@@ -152,9 +162,7 @@ func NewServiceBuilder(srv micro.Service, fn checker, set *Setting) (*ServiceBui
 		set.Interval = defaultHealthInterval
 	}
 
-
 	healthy.RegistryHealthy(nil)
-
 
 	err := healthy.RegisterCycloneHealthyHandler(srv.Server(), healthy.HealthyHandler{})
 	if err != nil {
@@ -177,6 +185,11 @@ func NewServiceBuilder(srv micro.Service, fn checker, set *Setting) (*ServiceBui
 func defaultCheckerHealth(sb *ServiceBuilder) {
 	max := sb.Interval * int64(time.Second)
 	min := int64(0.8 * float64(max))
+	shc := &SrvHealthyConfig{
+		Name:      sb.Name,
+		Duration:  sb.Interval * 5,
+		Threshold: 3,
+	}
 
 	for {
 		m, err := NewMonitor(sb.register, sb.MonitorConfig)
@@ -185,18 +198,24 @@ func defaultCheckerHealth(sb *ServiceBuilder) {
 			sb.error <- err
 			return
 		}
-		hi, err := m.GetHealth(&SrvHealthyConfig{
-			Name:      sb.Name,
-			Duration:  max * 5,
-			Threshold: 3,
-		})
-		logging.Debugw("Cyclone.ServiceBuilder.CheckerHealth.GetHealth.Debug",
-			"count", sb.Masters, "health_count",hi.HealthCount, "err", err)
 
-		if errr.Is(err, MonitorSrvNotFoundErr) || hi.HealthCount  < sb.Masters{
+		hi, err := m.GetHealth(shc)
+		logging.Debugw("Cyclone.ServiceBuilder.CheckerHealth.GetHealth.Debug",
+			"masters", sb.Masters, "count", hi.Count, "health_count", hi.HealthCount, "err", err)
+		if errutil.Is(MonitorSrvNotFoundErr, err) {
 			sb.start <- &struct{}{}
+			logging.Info("Cyclone.ServiceBuilder.CheckerHealth.MonitorSrvNotFoundErr.Start.Info")
 			return
+
+		} else {
+			if hi.Count < sb.Masters {
+				sb.start <- &struct{}{}
+				logging.Info("Cyclone.ServiceBuilder.CheckerHealth.HeartHealthCountBeat.Start.Info")
+				return
+			}
 		}
+		logging.Info("Cyclone.ServiceBuilder.CheckerHealth.Continue.Info")
+
 		time.Sleep(time.Duration(RandomInt64n(min, max)))
 	}
 

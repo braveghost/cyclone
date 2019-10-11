@@ -99,7 +99,6 @@ func McCountScope(name string, services ...*SrvConfigInfo) *MonitorConfig {
 	}
 }
 
-
 type MonitorConfig struct {
 	Name     string           // 配置名称, 根据配置名称单例客户端
 	Type     MonitorType      // 主机名Or地址Or数量, 节点状态
@@ -398,11 +397,16 @@ func (m *Monitor) removeNode(name string, node *registry.Node) error {
 
 // 健康状态检查, 不是监控当前服务和配置是否一致
 func (m *Monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*healthInfo, error) {
-	var hi = &healthInfo{Count: len(srv)}
-	var healthCount int
-	for _, service := range srv {
+	var hi = &healthInfo{}
+	var (
+		healthCount int
+		count       int
+	)
 
+	for _, service := range srv {
 		for _, node := range service.Nodes {
+			count += 1
+
 			tags := node.Metadata
 			val, ok := tags[clusterKey]
 			if !(ok && val == clusterMaster) {
@@ -412,55 +416,19 @@ func (m *Monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 				continue
 			}
 
-			cli, err := m.GetHealthyClient(info.Name)
+			res, err := m.getHealthyRes(info.Name, node.Address)
+
 			if err != nil {
-				logging.Errorw("Cyclone.Monitor.Health.GetHealthyClient.Error",
-					"err", err)
 				return hi, err
 			}
-			res, err := cli.Healthy(context.Background(), &healthy.CycloneRequest{},
-				func(option *client.CallOptions) {
-					option.Address = []string{node.Address}
-				},
-			)
-			if err != nil {
-				logging.Errorw("Cyclone.Monitor.Health.ClientQuery.Healthy.Error",
-					"err", err)
-				if res == nil {
-					res = &healthy.CycloneResponse{}
-				}
-			}
-
 			// 计数
 			hb := m.getHeartBeat(info)
 			st := hb.AddSignal(&healthSignal{res})
 			// 状态计数
 			if hb.Status() {
-
-				// 关闭服务, 删除注册中心的内容, 通过 Close 接口关闭服务
-				err = m.removeNode(info.Name, node)
-				if err != nil {
-					logging.Errorw("Cyclone.Monitor.Health.RemoveNode.Error",
-						"node_name", info.Name, "node", node, "err", err)
-				} else {
-
-					logging.Infow("Cyclone.Monitor.Health.RemoveNode.Info",
-						"node_name", info.Name, "counter", hb.Counter.Sum())
+				if res.Code != healthy.CycloneResponse_Healthy {
+					_ = m.closeService(info, node)
 				}
-
-				_, err := cli.Close(context.Background(), &healthy.CycloneRequest{},
-					func(option *client.CallOptions) {
-						option.Address = []string{node.Address}
-					},
-				)
-				if err != nil {
-					logging.Errorw("Cyclone.Monitor.Health.CloseNode.Error",
-						"node_name", info.Name, "node", node, "err", err)
-				}else {
-					logging.Infow("Cyclone.Monitor.Health.CloseNode.Info",
-						"node_name", info.Name)
-				}
-
 			}
 			// 健康计数
 			si := &SrvInfo{
@@ -473,7 +441,6 @@ func (m *Monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 			if res.Response != nil {
 				si.ApiInfo = res.Response.ApiInfo
 			}
-
 			if st == nil {
 				healthCount += 1
 				hi.Healthy = append(hi.Healthy, si)
@@ -484,7 +451,66 @@ func (m *Monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 	}
 
 	hi.HealthCount = healthCount
+	hi.Count = count
 	return hi, nil
+}
+
+// 获取健康信息
+func (m *Monitor) getHealthyRes(name, addr string) (*healthy.CycloneResponse, error) {
+	cli, err := m.GetHealthyClient(name)
+	if err != nil {
+		logging.Errorw("Cyclone.Monitor.Health.GetHealthyClient.Error",
+			"err", err)
+		return nil, err
+	}
+	res, err := cli.Healthy(context.Background(), &healthy.CycloneRequest{},
+		func(option *client.CallOptions) {
+			option.Address = []string{addr}
+		},
+	)
+
+	if err != nil {
+		logging.Errorw("Cyclone.Monitor.Health.ClientQuery.Healthy.Error",
+			"err", err)
+		if res == nil {
+			res = &healthy.CycloneResponse{}
+		}
+	}
+	return res, err
+}
+
+// 关闭对应服务
+func (m *Monitor) closeService(info *SrvHealthyConfig, node *registry.Node) error {
+
+	cli, err := m.GetHealthyClient(info.Name)
+	if err != nil {
+		logging.Errorw("Cyclone.Monitor.Health.GetHealthyClient.Error",
+			"err", err)
+		return err
+	}
+
+	// 关闭服务, 删除注册中心的内容, 通过 Close 接口关闭服务
+	err = m.removeNode(info.Name, node)
+	if err != nil {
+		logging.Errorw("Cyclone.Monitor.Health.RemoveNode.Error",
+			"node_name", info.Name, "node", node, "err", err)
+	} else {
+		logging.Info("Cyclone.Monitor.Health.RemoveNode.Info")
+	}
+
+	_, err = cli.Close(context.Background(), &healthy.CycloneRequest{},
+		func(option *client.CallOptions) {
+			option.Address = []string{node.Address}
+		},
+	)
+	if err != nil {
+		logging.Errorw("Cyclone.Monitor.Health.CloseNode.Error",
+			"node_name", info.Name, "node", node, "err", err)
+	} else {
+		logging.Infow("Cyclone.Monitor.Health.CloseNode.Info",
+			"node_name", info.Name)
+	}
+	return err
 }
 
 func (m *Monitor) getHeartBeat(info *SrvHealthyConfig) *rogue.HeartBeat {
@@ -492,7 +518,7 @@ func (m *Monitor) getHeartBeat(info *SrvHealthyConfig) *rogue.HeartBeat {
 	if tmpHb, ok := heartBeats[info.Name]; ok {
 		hb = tmpHb
 	} else {
-		hb = rogue.NewHeartBeat(info.Threshold, info.Threshold)
+		hb = rogue.NewHeartBeat(info.Threshold, info.Duration)
 		heartBeats[info.Name] = hb
 	}
 	return hb

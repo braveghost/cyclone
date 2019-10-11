@@ -45,7 +45,9 @@ func GetHealthyInfo(name string, res *CycloneResponse, fn HealthyFunc) {
 			} else {
 				res.Code = CycloneResponse_Sick
 			}
-			res.Response.ApiInfo = append(res.Response.ApiInfo, ai)
+			if ai != nil {
+				res.Response.ApiInfo = append(res.Response.ApiInfo, ai)
+			}
 		}
 
 		return nil
@@ -62,6 +64,7 @@ func (hh HealthyHandler) Healthy(ctx context.Context, req *CycloneRequest, res *
 		for _, l := range defaultHealthyFunctionConfig.Functions {
 			GetHealthyInfo(l.FuserName, res, l.Func)
 		}
+
 	}
 	return nil
 }
@@ -99,7 +102,9 @@ type HealthyFunction struct {
 // 注册健康检查函数
 func RegistryHealthy(hhc *HealthyHandlerConfig) {
 	if hhc == nil {
-		defaultHealthyFunctionConfig = &HealthyHandlerConfig{}
+		if defaultHealthyFunctionConfig == nil {
+			defaultHealthyFunctionConfig = &HealthyHandlerConfig{}
+		}
 	} else {
 		defaultHealthyFunctionConfig = hhc
 	}

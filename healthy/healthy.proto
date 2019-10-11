@@ -3,7 +3,6 @@ syntax = "proto3";
 package cyclone.healthy;
 
 
-
 service CycloneHealthy {
     rpc Healthy (CycloneRequest) returns (CycloneResponse) {
     }
