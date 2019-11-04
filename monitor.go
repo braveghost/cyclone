@@ -425,7 +425,11 @@ func (m *Monitor) health(srv []*registry.Service, info *SrvHealthyConfig) (*heal
 			hb := m.getHeartBeat(info)
 			st := hb.AddSignal(&healthSignal{res})
 			// 状态计数
-			if hb.Status() {
+			ok, err = hb.Status()
+			if err != nil {
+				return nil, err
+			}
+			if ok {
 				if res.Code != healthy.CycloneResponse_Healthy {
 					_ = m.closeService(info, node)
 				}
@@ -518,7 +522,7 @@ func (m *Monitor) getHeartBeat(info *SrvHealthyConfig) *rogue.HeartBeat {
 	if tmpHb, ok := heartBeats[info.Name]; ok {
 		hb = tmpHb
 	} else {
-		hb = rogue.NewHeartBeat(info.Threshold, info.Duration)
+		hb = rogue.NewHeartBeat(info.Threshold, info.Duration, rogue.ECounterTypeRedis, rogue.UnitSecond)
 		heartBeats[info.Name] = hb
 	}
 	return hb
